@@ -6,7 +6,7 @@ This repository contains a PyTorch implementation of the albert model from the p
 
 by Zhenzhong Lan. Mingda Chen....
 
-##　中文模型模型Download Pre-trained Models of Chinese
+## 中文模型模型Download Pre-trained Models of Chinese
 
 模型权重主要来自：[github](https://github.com/brightmart/albert_zh)
 
