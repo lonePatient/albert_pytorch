@@ -116,14 +116,14 @@ class PregeneratedDataset(Dataset):
 def main():
     parser = ArgumentParser()
     parser.add_argument('--data_name',default='albert',type=str)
-    parser.add_argument("--file_num", type=int, default=10,
+    parser.add_argument("--file_num", type=int, default=2,
                         help="Number of pregenerate file")
     parser.add_argument("--reduce_memory", action="store_true",
                         help="Store training data as on-disc memmaps to massively reduce memory usage")
     parser.add_argument("--epochs", type=int, default=4,
                         help="Number of epochs to train for")
-    parser.add_argument('--num_eval_steps', default=200)
-    parser.add_argument('--num_save_steps', default=5000)
+    parser.add_argument('--num_eval_steps', default=20)
+    parser.add_argument('--num_save_steps', default=200)
     parser.add_argument('--share_parameter',default=False, action='store_true')
     parser.add_argument("--local_rank", type=int, default=-1,
                         help="local_rank for distributed training on gpus")
@@ -131,7 +131,7 @@ def main():
                         help="Whether not to use CUDA when available")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
                         help="Number of updates steps to accumulate before performing a backward/update pass.")
-    parser.add_argument("--train_batch_size", default=24, type=int,
+    parser.add_argument("--train_batch_size", default=8, type=int,
                         help="Total batch size for training.")
     parser.add_argument('--loss_scale', type=float, default=0,
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
