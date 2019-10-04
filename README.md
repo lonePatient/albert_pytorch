@@ -33,6 +33,7 @@ arxiv: https://arxiv.org/pdf/1909.11942.pdf
 ３．下载对应的数据集，比如[LCQMC](https://drive.google.com/open?id=1HXYMqsXjmA5uIfu_SFqP7r_vZZG-m_H0)数据集，包含训练、验证和测试集，训练集包含24万口语化描述的中文句子对，标签为1或0。1为句子语义相似，0为语义不相似。
 
 ４．运行`python run_classifier.py --do_train`进行Fine-tuning训练
+
 5.　运行`python run_classifier.py --do_train`进行test评估
 
 ## 结果
