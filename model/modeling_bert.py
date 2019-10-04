@@ -153,6 +153,7 @@ class BertEmbeddings(nn.Module):
             self.word_embeddings = nn.Embedding(config.vocab_size, config.embedding_size, padding_idx=0)
             self.word_embeddings_2 = None
         else:
+            #
             self.word_embeddings = nn.Embedding(config.vocab_size, config.embedding_size, padding_idx=0)
             self.word_embeddings_2 = nn.Linear(config.embedding_size, config.hidden_size, bias=False)
 

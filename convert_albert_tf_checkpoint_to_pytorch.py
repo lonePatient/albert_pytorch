@@ -66,8 +66,11 @@ if __name__ == "__main__":
                                      args.pytorch_dump_path)
 
 '''
+example:
 
-python convert_albert_tf_checkpoint_to_pytorch.py --tf_checkpoint_path=./albert_large_zh --bert_config_file=./albert_large_zh/albert_config_large.json --pytorch_dump_path=./outputs/pytorch_pretrain/pytorch_model.bin
-
+python convert_albert_tf_checkpoint_to_pytorch.py \
+    --tf_checkpoint_path=./albert_base_zh \
+    --bert_config_file=./albert_base_zh/bert_config.json \
+    --pytorch_dump_path=./outputs/pytorch_pretrain/pytorch_model.bin
 
 '''

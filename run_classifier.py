@@ -1,31 +1,12 @@
-# coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
-# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-""" Finetuning the library models for sequence classification on GLUE (Bert, XLM, XLNet, RoBERTa)."""
-
 from __future__ import absolute_import, division, print_function
-
 import argparse
 import torch
-from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
-                              TensorDataset)
-from model.file_utils import WEIGHTS_NAME,CONFIG_NAME
+from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,TensorDataset)
+from model.file_utils import WEIGHTS_NAME, CONFIG_NAME
 from model.modeling_bert import BertConfig
 from model.optimization import AdamW, WarmupLinearSchedule
 from tools import seed_everything
-from tools import logger,init_logger
+from tools import logger, init_logger
 from configs.base import config
 from model.modeling_bert import BertForSequenceClassification
 from progressbar import ProgressBar
@@ -33,18 +14,18 @@ from lcqmc_progressor import BertProcessor
 from metrics import Accuracy
 from tools import AverageMeter
 
-def train(args, train_dataloader, eval_dataloader,metrics,model):
+def train(args, train_dataloader, eval_dataloader, metrics, model):
     """ Train the model """
-
 
     t_total = len(train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
 
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
-        {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': args.weight_decay},
+        {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+         'weight_decay': args.weight_decay},
         {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-        ]
+    ]
     args.warmup_steps = t_total * args.warmup_proportion
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
     scheduler = WarmupLinearSchedule(optimizer, warmup_steps=args.warmup_steps, t_total=t_total)
@@ -69,31 +50,30 @@ def train(args, train_dataloader, eval_dataloader,metrics,model):
     logger.info("  Num Epochs = %d", args.num_train_epochs)
     logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size)
     logger.info("  Total train batch size (w. parallel, distributed & accumulation) = %d",
-                   args.train_batch_size * args.gradient_accumulation_steps * (torch.distributed.get_world_size() if args.local_rank != -1 else 1))
+                args.train_batch_size * args.gradient_accumulation_steps * (
+                    torch.distributed.get_world_size() if args.local_rank != -1 else 1))
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
     logger.info("  Total optimization steps = %d", t_total)
 
     global_step = 0
     best_acc = 0
     model.zero_grad()
-
-    seed_everything(args.seed)  # Added here for reproductibility (even between python 2 and 3)
-
+    seed_everything(args.seed)
     for epoch in range(int(args.num_train_epochs)):
         tr_loss = AverageMeter()
-        pbar = ProgressBar(n_total=len(train_dataloader),desc = 'Training')
+        pbar = ProgressBar(n_total=len(train_dataloader), desc='Training')
         for step, batch in enumerate(train_dataloader):
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
-            inputs = {'input_ids':      batch[0],
+            inputs = {'input_ids': batch[0],
                       'attention_mask': batch[1],
-                      'labels':         batch[3]}
+                      'labels': batch[3]}
             inputs['token_type_ids'] = batch[2]
             outputs = model(**inputs)
             loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
             if args.n_gpu > 1:
-                loss = loss.mean() # mean() to average on multi-gpu parallel training
+                loss = loss.mean()  # mean() to average on multi-gpu parallel training
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
             if args.fp16:
@@ -103,16 +83,16 @@ def train(args, train_dataloader, eval_dataloader,metrics,model):
             else:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-            tr_loss.update(loss.item(),n=1)
-            pbar(step,info = {"loss":loss.item()})
+            tr_loss.update(loss.item(), n=1)
+            pbar(step, info={"loss": loss.item()})
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 optimizer.step()
                 scheduler.step()  # Update learning rate schedule
                 model.zero_grad()
                 global_step += 1
 
-        train_log = {'loss':tr_loss.avg}
-        eval_log = evaluate(args, model, eval_dataloader,metrics)
+        train_log = {'loss': tr_loss.avg}
+        eval_log = evaluate(args, model, eval_dataloader, metrics)
         logs = dict(train_log, **eval_log)
         show_info = f'\nEpoch: {epoch} - ' + "-".join([f' {key}: {value:.4f} ' for key, value in logs.items()])
         logger.info(show_info)
@@ -131,8 +111,7 @@ def train(args, train_dataloader, eval_dataloader,metrics,model):
             with open(str(output_config_file), 'w') as f:
                 f.write(model_to_save.config.to_json_string())
 
-
-def evaluate(args, model, eval_dataloader,metrics):
+def evaluate(args, model, eval_dataloader, metrics):
     # Eval!
     logger.info("  Num examples = %d", len(eval_dataloader))
     logger.info("  Batch size = %d", args.eval_batch_size)
@@ -140,33 +119,34 @@ def evaluate(args, model, eval_dataloader,metrics):
     metrics.reset()
     preds = []
     targets = []
-    pbar = ProgressBar(n_total=len(eval_dataloader),desc ='Evaluating')
-    for bid,batch in enumerate(eval_dataloader):
+    pbar = ProgressBar(n_total=len(eval_dataloader), desc='Evaluating')
+    for bid, batch in enumerate(eval_dataloader):
         model.eval()
         batch = tuple(t.to(args.device) for t in batch)
         with torch.no_grad():
-            inputs = {'input_ids':      batch[0],
+            inputs = {'input_ids': batch[0],
                       'attention_mask': batch[1],
-                      'labels':         batch[3]}
+                      'labels': batch[3]}
             inputs['token_type_ids'] = batch[2]
             outputs = model(**inputs)
             loss, logits = outputs[:2]
-            eval_loss.update(loss.item(),n=1)
+            eval_loss.update(loss.item(), n=1)
         preds.append(logits.cpu().detach())
         targets.append(inputs['labels'].cpu().detach())
         pbar(bid)
     preds = torch.cat(preds, dim=0).cpu().detach()
     targets = torch.cat(targets, dim=0).cpu().detach()
     metrics(preds, targets)
-    eval_log = {"eval_acc":metrics.value(),
+    eval_log = {"eval_acc": metrics.value(),
                 'eval_loss': eval_loss.avg}
     return eval_log
+
 
 def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--arch", default='albert', type=str)
-    parser.add_argument('--task_name',default='lcqmc',type=str)
+    parser.add_argument('--task_name', default='lcqmc', type=str)
     parser.add_argument("--train_max_seq_len", default=60, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences longer "
                              "than this will be truncated, sequences shorter will be padded.")
@@ -177,6 +157,8 @@ def main():
                         help="Whether to run training.")
     parser.add_argument("--do_eval", action='store_true',
                         help="Whether to run eval on the dev set.")
+    parser.add_argument("--do_test", action='store_true',
+                        help="Whether to run eval on the test set.")
     parser.add_argument("--evaluate_during_training", action='store_true',
                         help="Rul evaluation during training at each logging step.")
     parser.add_argument("--do_lower_case", action='store_true',
@@ -184,11 +166,11 @@ def main():
 
     parser.add_argument("--train_batch_size", default=32, type=int,
                         help="Batch size per GPU/CPU for training.")
-    parser.add_argument("--eval_batch_size", default=32, type=int,
+    parser.add_argument("--eval_batch_size", default=16, type=int,
                         help="Batch size per GPU/CPU for evaluation.")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
                         help="Number of updates steps to accumulate before performing a backward/update pass.")
-    parser.add_argument("--learning_rate", default=5e-5, type=float,
+    parser.add_argument("--learning_rate", default=2e-5, type=float,
                         help="The initial learning rate for Adam.")
     parser.add_argument("--weight_decay", default=0.1, type=float,
                         help="Weight deay if we apply some.")
@@ -199,7 +181,7 @@ def main():
     parser.add_argument("--num_train_epochs", default=3.0, type=float,
                         help="Total number of training epochs to perform.")
     parser.add_argument("--warmup_proportion", default=0.1, type=int,
-                        help="Linear warmup over warmup_steps.")
+                        help="Proportion of training to perform linear learning rate warmup for,E.g., 0.1 = 10% of training.")
 
     parser.add_argument("--eval_all_checkpoints", action='store_true',
                         help="Evaluate all checkpoints starting with the same prefix as model_name ending and ending with step number")
@@ -247,7 +229,7 @@ def main():
     args.device = device
     init_logger(log_file=config['log_dir'] / 'finetuning.log')
     logger.warning("Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
-                    args.local_rank, device, args.n_gpu, bool(args.local_rank != -1), args.fp16)
+                   args.local_rank, device, args.n_gpu, bool(args.local_rank != -1), args.fp16)
 
     # Set seed
     seed_everything(args.seed)
@@ -256,55 +238,69 @@ def main():
     label_list = processor.get_labels()
     num_labels = len(label_list)
 
-    train_data = processor.get_train(config['data_dir'] / "train.txt")
-    train_examples = processor.create_examples(lines=train_data,
-                                               example_type='train',
-                                               cached_examples_file=config[
-                                                'data_dir'] / f"cached_train_examples_{args.arch}")
-    train_features = processor.create_features(examples=train_examples,
-                                               max_seq_len=args.train_max_seq_len,
-                                               cached_features_file=config[
-                                                'data_dir'] / "cached_train_features_{}_{}".format(
-                                                   args.train_max_seq_len, args.arch
-                                               ))
-    train_dataset = processor.create_dataset(train_features)
 
-    train_sampler = RandomSampler(train_dataset)
-    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size)
-    valid_data = processor.get_dev(config['data_dir'] / "dev.txt")
-    valid_examples = processor.create_examples(lines=valid_data,
-                                               example_type='valid',
-                                               cached_examples_file=config[
-                                                'data_dir'] / f"cached_valid_examples_{args.arch}")
-
-    valid_features = processor.create_features(examples=valid_examples,
-                                               max_seq_len=args.eval_max_seq_len,
-                                               cached_features_file=config[
-                                                 'data_dir'] / "cached_valid_features_{}_{}".format(
-                                                   args.eval_max_seq_len, args.arch
-                                               ))
-    valid_dataset = processor.create_dataset(valid_features)
-    valid_sampler = SequentialSampler(valid_dataset)
-    valid_dataloader = DataLoader(valid_dataset, sampler=valid_sampler, batch_size=args.eval_batch_size)
-    # Load pretrained model and tokenizer
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
-    bert_config = BertConfig.from_json_file(str(config['bert_dir'] / 'config.json'))
+    bert_config = BertConfig.from_json_file(str(config['bert_dir'] / 'bert_config.json'))
 
     bert_config.share_parameter_across_layers = True
     bert_config.num_labels = num_labels
 
-    model = BertForSequenceClassification.from_pretrained(config['bert_dir'],config=bert_config)
-
-    if args.local_rank == 0:
-        torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
-    model.to(args.device)
     logger.info("Training/evaluation parameters %s", args)
     metrics = Accuracy(topK=1)
     # Training
     if args.do_train:
-        train(args, train_dataloader, valid_dataloader,metrics,model)
+        train_data = processor.get_train(config['data_dir'] / "train.txt")
+        train_examples = processor.create_examples(lines=train_data, example_type='train',
+                                                   cached_examples_file=config[
+                                                                            'data_dir'] / f"cached_train_examples_{args.arch}")
+        train_features = processor.create_features(examples=train_examples, max_seq_len=args.train_max_seq_len,
+                                                   cached_features_file=config[
+                                                                            'data_dir'] / "cached_train_features_{}_{}".format(
+                                                       args.train_max_seq_len, args.arch
+                                                   ))
+        train_dataset = processor.create_dataset(train_features)
+        train_sampler = RandomSampler(train_dataset)
+        train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size)
+
+        valid_data = processor.get_dev(config['data_dir'] / "dev.txt")
+        valid_examples = processor.create_examples(lines=valid_data, example_type='valid',
+                                                   cached_examples_file=config[
+                                                                            'data_dir'] / f"cached_valid_examples_{args.arch}")
+        valid_features = processor.create_features(examples=valid_examples, max_seq_len=args.eval_max_seq_len,
+                                                   cached_features_file=config[
+                                                                            'data_dir'] / "cached_valid_features_{}_{}".format(
+                                                       args.eval_max_seq_len, args.arch
+                                                   ))
+        valid_dataset = processor.create_dataset(valid_features)
+        valid_sampler = SequentialSampler(valid_dataset)
+        valid_dataloader = DataLoader(valid_dataset, sampler=valid_sampler, batch_size=args.eval_batch_size)
+
+        model = BertForSequenceClassification.from_pretrained(config['bert_dir'], config=bert_config)
+        if args.local_rank == 0:
+            torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
+        model.to(args.device)
+        train(args, train_dataloader, valid_dataloader, metrics, model)
+    if args.do_test:
+        test_data = processor.get_train(config['data_dir'] / "test.txt")
+        test_examples = processor.create_examples(lines=test_data,
+                                                  example_type='test',
+                                                  cached_examples_file=config[
+                                                  'data_dir'] / f"cached_test_examples_{args.arch}")
+        test_features = processor.create_features(examples=test_examples,
+                                                  max_seq_len=args.eval_max_seq_len,
+                                                  cached_features_file=config[
+                                                  'data_dir'] / "cached_test_features_{}_{}".format(
+                                                      args.eval_max_seq_len, args.arch
+                                                  ))
+        test_dataset = processor.create_dataset(test_features)
+        test_sampler = SequentialSampler(test_dataset)
+        test_dataloader = DataLoader(test_dataset, sampler=test_sampler, batch_size=args.eval_batch_size)
+        model = BertForSequenceClassification.from_pretrained(args.model_save_path, config=bert_config)
+        model.to(args.device)
+        test_log = evaluate(args, model, test_dataloader, metrics)
+        print(test_log)
 
 
 if __name__ == "__main__":
