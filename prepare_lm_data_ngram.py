@@ -29,7 +29,7 @@ def truncate_seq_pair(tokens_a, tokens_b, max_num_tokens):
 
 
 def create_instances_from_document(all_documents, document_index, max_seq_length, short_seq_prob,
-                                   masked_lm_prob, max_predictions_per_seq, vocab_words):
+                                   max_ngram,masked_lm_prob, max_predictions_per_seq, vocab_words):
     """Creates `TrainingInstance`s for a single document.
      This method is changed to create sentence-order prediction (SOP) followed by idea from paper of ALBERT, 2019-08-28, brightmart
     """
@@ -106,7 +106,7 @@ def create_instances_from_document(all_documents, document_index, max_seq_length
 
                 # 创建masked LM的任务的数据 Creates the predictions for the masked LM objective
                 tokens, masked_lm_positions, masked_lm_labels = create_masked_lm_predictions(
-                    tokens, masked_lm_prob, max_predictions_per_seq, vocab_words)
+                    tokens, max_ngram,masked_lm_prob, max_predictions_per_seq, vocab_words)
                 instance = {
                     "tokens": tokens,
                     "segment_ids": segment_ids,
@@ -120,9 +120,15 @@ def create_instances_from_document(all_documents, document_index, max_seq_length
     return instances
 
 
-def create_masked_lm_predictions(tokens, masked_lm_prob, max_predictions_per_seq, vocab_list):
+def create_masked_lm_predictions(tokens, max_ngram, masked_lm_prob, max_predictions_per_seq, vocab_list):
     """Creates the predictions for the masked LM objective. This is mostly copied from the Google BERT repo, but
     with several refactors to clean it up and remove a lot of unnecessary variables."""
+
+    # n-gram masking Albert
+    ngrams = np.arange(1, max_ngram + 1, dtype=np.int64)
+    pvals = 1. / np.arange(1, max_ngram + 1)
+    pvals /= pvals.sum(keepdims=True)  # p(n) = 1/n / sigma(1/k)
+
     cand_indices = []
     for (i, token) in enumerate(tokens):
         if token == "[CLS]" or token == "[SEP]":
@@ -145,14 +151,17 @@ def create_masked_lm_predictions(tokens, masked_lm_prob, max_predictions_per_seq
     covered_indices = set()
 
     for index in cand_indices:
+
+        n = np.random.choice(ngrams, p=pvals)
         if len(masked_token_labels) >= num_to_mask:
             break
 
         if index in covered_indices:
             continue
-        # 15% mask five gram
-        if random.random() >= 0.85 and index < len(cand_indices) - 4:
-            for ind in [index, index + 1, index + 2, index + 3, index + 4]:
+
+        if index < len(cand_indices) - (n - 1):
+            for i in range(n):
+                ind = index + i
                 if ind in covered_indices:
                     continue
                 covered_indices.add(ind)
@@ -166,82 +175,10 @@ def create_masked_lm_predictions(tokens, masked_lm_prob, max_predictions_per_seq
                     # 10% of the time, replace with random word
                     else:
                         masked_token = random.choice(vocab_list)
-                tokens[ind] = masked_token
+
                 masked_token_labels.append(MaskedLmInstance(index=ind, label=tokens[ind]))
-
-        # 20% mask four gram
-        elif random.random() >= 0.65 and index < len(cand_indices) - 3:
-            for ind in [index, index + 1, index + 2, index + 3]:
-                if ind in covered_indices:
-                    continue
-                covered_indices.add(ind)
-
-                # 80% of the time, replace with [MASK]
-                if random.random() < 0.8:
-                    masked_token = "[MASK]"
-                else:
-                    # 10% of the time, keep original
-                    if random.random() < 0.5:
-                        masked_token = tokens[ind]
-                    # 10% of the time, replace with random word
-                    else:
-                        masked_token = random.choice(vocab_list)
                 tokens[ind] = masked_token
-                masked_token_labels.append(MaskedLmInstance(index=ind, label=tokens[ind]))
 
-        # 30% mask trigram
-        elif random.random() >= 0.35 and index < len(cand_indices) - 2:
-            for ind in [index, index + 1, index + 2]:
-                if ind in covered_indices:
-                    continue
-                covered_indices.add(ind)
-                # 80% of the time, replace with [MASK]
-                if random.random() < 0.8:
-                    masked_token = "[MASK]"
-                else:
-                    # 10% of the time, keep original
-                    if random.random() < 0.5:
-                        masked_token = tokens[ind]
-                    # 10% of the time, replace with random word
-                    else:
-                        masked_token = random.choice(vocab_list)
-                tokens[ind] = masked_token
-                masked_token_labels.append(MaskedLmInstance(index=ind, label=tokens[ind]))
-
-        # 20% mask bigram
-        elif random.random() >= 0.15 and index < len(cand_indices) - 1:
-            for ind in [index, index + 1, index + 2]:
-                if ind in covered_indices:
-                    continue
-                covered_indices.add(ind)
-                # 80% of the time, replace with [MASK]
-                if random.random() < 0.8:
-                    masked_token = "[MASK]"
-                else:
-                    # 10% of the time, keep original
-                    if random.random() < 0.5:
-                        masked_token = tokens[ind]
-                    # 10% of the time, replace with random word
-                    else:
-                        masked_token = random.choice(vocab_list)
-                tokens[ind] = masked_token
-                masked_token_labels.append(MaskedLmInstance(index=ind, label=tokens[ind]))
-
-        # 15% mask unigram
-        else:
-            covered_indices.add(index)
-            # 80% of the time, replace with [MASK]
-            if random.random() < 0.8:
-                masked_token = "[MASK]"
-            else:
-                # 10% of the time, keep original
-                if random.random() < 0.5:
-                    masked_token = tokens[index]
-                # 10% of the time, replace with random word
-                else:
-                    masked_token = random.choice(vocab_list)
-            tokens[index] = masked_token
-            masked_token_labels.append(MaskedLmInstance(index=index, label=tokens[index]))
     masked_token_labels = sorted(masked_token_labels, key=lambda x: x.index)
     mask_indices = []
     masked_labels = []
@@ -252,7 +189,7 @@ def create_masked_lm_predictions(tokens, masked_lm_prob, max_predictions_per_seq
 
 
 def create_training_instances(input_file, tokenizer, max_seq_len, short_seq_prob,
-                              masked_lm_prob, max_predictions_per_seq):
+                              max_ngram,masked_lm_prob, max_predictions_per_seq):
     """Create `TrainingInstance`s from raw text."""
     all_documents = [[]]
     # Input file format:
@@ -285,20 +222,20 @@ def create_training_instances(input_file, tokenizer, max_seq_len, short_seq_prob
         instances.extend(
             create_instances_from_document(
                 all_documents, document_index, max_seq_len, short_seq_prob,
-                masked_lm_prob, max_predictions_per_seq, vocab_words))
+                max_ngram,masked_lm_prob, max_predictions_per_seq, vocab_words))
         pbar(step=document_index)
     print(' ')
-
-    for ex_idx,instance in enumerate(instances):
-        if ex_idx < 5:
-            print("-------------------------Example-----------------------")
-            print("id: %s" % (ex_idx))
-            print("tokens: %s" % " ".join([str(x) for x in instance['tokens']]))
-            print("masked_lm_labels: %s" % " ".join([str(x) for x in instance['masked_lm_labels']]))
-            print("segment_ids: %s" % " ".join([str(x) for x in instance['segment_ids']]))
-            print("masked_lm_positions: %s" % " ".join([str(x) for x in instance['masked_lm_positions']]))
-            print("is random next : %d" % instance['is_random_next'])
-
+    ex_idx = 0
+    while ex_idx < 5:
+        instance = instances[ex_idx]
+        logger.info("-------------------------Example-----------------------")
+        logger.info(f"id: {ex_idx}")
+        logger.info(f"tokens: {' '.join([str(x) for x in instance['tokens']])}")
+        logger.info(f"masked_lm_labels: {' '.join([str(x) for x in instance['masked_lm_labels']])}")
+        logger.info(f"segment_ids: {' '.join([str(x) for x in instance['segment_ids']])}")
+        logger.info(f"masked_lm_positions: {' '.join([str(x) for x in instance['masked_lm_positions']])}")
+        logger.info(f"is_random_next : {instance['is_random_next']}")
+        ex_idx += 1
     random.shuffle(instances)
     return instances
 
@@ -309,6 +246,7 @@ def main():
     parser.add_argument("--do_split", default=False, action='store_true')
     parser.add_argument("--do_lower_case", default=False, action='store_true')
     parser.add_argument('--seed', default=42, type=int)
+    parser.add_argument('--max_ngram', default=3, type=int)
     parser.add_argument("--line_per_file", default=1000000000, type=int)
     parser.add_argument("--file_num", type=int, default=10,
                         help="Number of dynamic masking to pregenerate (with different masks)")
@@ -355,6 +293,7 @@ def main():
                     file_examples = create_training_instances(input_file=file_path,
                                                               tokenizer=tokenizer,
                                                               max_seq_len=args.max_seq_len,
+                                                              max_ngram=args.max_ngram,
                                                               short_seq_prob=args.short_seq_prob,
                                                               masked_lm_prob=args.masked_lm_prob,
                                                               max_predictions_per_seq=args.max_predictions_per_seq)
