@@ -73,7 +73,7 @@ config = BertConfig.from_pretrained(bert_config_file,share_type=share_type)
 
 3. [albert_xlarge_zh](https://storage.googleapis.com/albert_zh/albert_xlarge_zh.zip) 参数量，层数24，文件大小为230M
 
-## 预训练模型
+## 预训练
 
 ** n-gram**: 原始论文中按照以下分布随机生成n-gram，默认max_n为3
 
