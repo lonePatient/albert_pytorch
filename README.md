@@ -75,7 +75,7 @@ config = BertConfig.from_pretrained(bert_config_file,share_type=share_type)
 
 ## 预训练
 
-** n-gram**: 原始论文中按照以下分布随机生成n-gram，默认max_n为3
+**n-gram**: 原始论文中按照以下分布随机生成n-gram，默认max_n为3
 
    <p align="center"><img width="200" src="https://lonepatient-1257945978.cos.ap-chengdu.myqcloud.com/n-gram.png" /></p>
 １．将文本数据转化为一行一句格式，并且不同document之间使用`\n`分割
