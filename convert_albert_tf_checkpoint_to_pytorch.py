@@ -21,16 +21,15 @@ from __future__ import print_function
 import argparse
 import torch
 
-from model.modeling_bert import BertConfig, BertForPreTraining, load_tf_weights_in_albert
+from model.modeling_albert import BertConfig, BertForPreTraining, load_tf_weights_in_albert
 
 import logging
 logging.basicConfig(level=logging.INFO)
 
-def convert_tf_checkpoint_to_pytorch(tf_checkpoint_path, bert_config_file, pytorch_dump_path):
+def convert_tf_checkpoint_to_pytorch(tf_checkpoint_path, bert_config_file,share_type, pytorch_dump_path):
     # Initialise PyTorch model
-    config = BertConfig.from_json_file(bert_config_file)
-    config.share_parameter_across_layers=True
-    print("Building PyTorch model from configuration: {}".format(str(config)))
+    config = BertConfig.from_pretrained(bert_config_file,share_type=share_type)
+    # print("Building PyTorch model from configuration: {}".format(str(config)))
     model = BertForPreTraining(config)
 
     # Load weights from tf checkpoint
@@ -55,6 +54,10 @@ if __name__ == "__main__":
                         required = True,
                         help = "The config json file corresponding to the pre-trained BERT model. \n"
                             "This specifies the model architecture.")
+    parser.add_argument('--share_type',
+                        default='all',
+                        type=str,
+                        choices=['all', 'attention', 'ffn', 'None'])
     parser.add_argument("--pytorch_dump_path",
                         default = None,
                         type = str,
@@ -63,14 +66,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     convert_tf_checkpoint_to_pytorch(args.tf_checkpoint_path,
                                      args.bert_config_file,
+                                     args.share_type,
                                      args.pytorch_dump_path)
 
 '''
 example:
 
 python convert_albert_tf_checkpoint_to_pytorch.py \
-    --tf_checkpoint_path=./albert_base_zh \
-    --bert_config_file=./albert_base_zh/bert_config.json \
-    --pytorch_dump_path=./outputs/pytorch_pretrain/pytorch_model.bin
+    --tf_checkpoint_path=./pretrain/tf/albert_xlarge_zh \
+    --bert_config_file=./configs/albert_config_xlarge.json \
+    --pytorch_dump_path=./pretrain/pytorch/albert_xlarge_zh/pytorch_model.bin \
+    --share_type=all
 
 '''

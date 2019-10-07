@@ -6,21 +6,23 @@ from pathlib import Path
 from argparse import ArgumentParser
 from collections import namedtuple
 from tempfile import TemporaryDirectory
-from tools import logger, init_logger
+from common.tools import logger, init_logger
 from configs.base import config
 from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
-from tools import AverageMeter
-from metrics import LMAccuracy
+from common.tools import AverageMeter
+from common.metrics import LMAccuracy
 from torch.nn import CrossEntropyLoss, MSELoss
-from model.modeling_bert import BertForPreTraining, BertConfig
+from model.modeling_albert import BertForPreTraining, BertConfig
 from model.file_utils import CONFIG_NAME
 from model.tokenization_bert import BertTokenizer
 from model.optimization import AdamW, WarmupLinearSchedule
-from tools import seed_everything
+from callback.optimizater import Lamb
+from common.tools import seed_everything
 
 InputFeatures = namedtuple("InputFeatures", "input_ids input_mask segment_ids lm_label_ids is_next")
-init_logger(log_file=config['log_dir'] / ("train_bert_model.log"))
+init_logger(log_file=config['log_dir'] / ("train_albert_model.log"))
+
 
 def convert_example_to_features(example, tokenizer, max_seq_length):
     tokens = example["tokens"]
@@ -50,7 +52,7 @@ def convert_example_to_features(example, tokenizer, max_seq_length):
 
 
 class PregeneratedDataset(Dataset):
-    def __init__(self, training_path, file_id, tokenizer, data_name,reduce_memory=False):
+    def __init__(self, training_path, file_id, tokenizer, data_name, reduce_memory=False):
         self.tokenizer = tokenizer
         self.file_id = file_id
         data_file = training_path / f"{data_name}_file_{self.file_id}.json"
@@ -115,23 +117,23 @@ class PregeneratedDataset(Dataset):
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('--data_name',default='albert',type=str)
-    parser.add_argument("--file_num", type=int, default=2,
-                        help="Number of pregenerate file")
+    parser.add_argument('--data_name', default='albert', type=str)
+    parser.add_argument("--file_num", type=int, default=10,
+                        help="Number of dynamic masking to pregenerate (with different masks)")
     parser.add_argument("--reduce_memory", action="store_true",
                         help="Store training data as on-disc memmaps to massively reduce memory usage")
     parser.add_argument("--epochs", type=int, default=4,
                         help="Number of epochs to train for")
-    parser.add_argument('--num_eval_steps', default=20)
+    parser.add_argument('--share_type',default='all',type=str,choices=['all','attention','ffn','None'])
+    parser.add_argument('--num_eval_steps', default=100)
     parser.add_argument('--num_save_steps', default=200)
-    parser.add_argument('--share_parameter',default=False, action='store_true')
     parser.add_argument("--local_rank", type=int, default=-1,
                         help="local_rank for distributed training on gpus")
     parser.add_argument("--no_cuda", action='store_true',
                         help="Whether not to use CUDA when available")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
                         help="Number of updates steps to accumulate before performing a backward/update pass.")
-    parser.add_argument("--train_batch_size", default=8, type=int,
+    parser.add_argument("--train_batch_size", default=4, type=int,
                         help="Total batch size for training.")
     parser.add_argument('--loss_scale', type=float, default=0,
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
@@ -142,7 +144,7 @@ def main():
     parser.add_argument("--adam_epsilon", default=1e-8, type=float,
                         help="Epsilon for Adam optimizer.")
     parser.add_argument('--max_grad_norm', default=1.0, type=float)
-    parser.add_argument("--learning_rate", default=2e-4, type=float,
+    parser.add_argument("--learning_rate", default=0.00176, type=float,
                         help="The initial learning rate for Adam.")
     parser.add_argument('--seed', type=int, default=42,
                         help="random seed for initialization")
@@ -181,14 +183,15 @@ def main():
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.distributed.init_process_group(backend='nccl')
     logger.info(
-        f"device: {device} , distributed training: {bool(args.local_rank != -1)}, 16-bits training: {args.fp16}, share_parameter: {args.share_parameter}")
+        f"device: {device} , distributed training: {bool(args.local_rank != -1)}, 16-bits training: {args.fp16}, "
+        f"share_type: {args.share_type}")
 
     if args.gradient_accumulation_steps < 1:
         raise ValueError(
             f"Invalid gradient_accumulation_steps parameter: {args.gradient_accumulation_steps}, should be >= 1")
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
     seed_everything(args.seed)
-    tokenizer = BertTokenizer(vocab_file=config['checkpoint_dir'] / 'vocab.txt')
+    tokenizer = BertTokenizer(vocab_file=config['albert_vocab_path'])
     total_train_examples = samples_per_epoch * args.epochs
 
     num_train_optimization_steps = int(
@@ -197,11 +200,7 @@ def main():
         num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
     args.warmup_steps = int(num_train_optimization_steps * args.warmup_proportion)
 
-    bert_config = BertConfig.from_json_file(str(config['checkpoint_dir'] / 'config.json'))
-    if args.share_parameter:
-        bert_config.share_parameter_across_layers = True
-    else:
-        bert_config.share_parameter_across_layers = False
+    bert_config = BertConfig.from_pretrained(str(config['albert_config_path']),share_type=args.share_type)
     model = BertForPreTraining(config=bert_config)
     # model = BertForMaskedLM.from_pretrained(config['checkpoint_dir'] / 'checkpoint-580000')
     model.to(device)
@@ -213,6 +212,7 @@ def main():
         {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
+    # optimizer = Lamb(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
     lr_scheduler = WarmupLinearSchedule(optimizer, warmup_steps=args.warmup_steps, t_total=num_train_optimization_steps)
     if args.fp16:
         try:
@@ -248,7 +248,7 @@ def main():
     for epoch in range(args.epochs):
         for idx in range(args.file_num):
             epoch_dataset = PregeneratedDataset(file_id=idx, training_path=pregenerated_data, tokenizer=tokenizer,
-                                                reduce_memory=args.reduce_memory,data_name=args.data_name)
+                                                reduce_memory=args.reduce_memory, data_name=args.data_name)
             if args.local_rank == -1:
                 train_sampler = RandomSampler(epoch_dataset)
             else:
@@ -258,8 +258,8 @@ def main():
             nb_tr_examples, nb_tr_steps = 0, 0
             for step, batch in enumerate(train_dataloader):
                 batch = tuple(t.to(device) for t in batch)
-                input_ids, input_mask, segment_ids, lm_label_ids,is_next = batch
-                outputs = model(input_ids=input_ids, token_type_ids=segment_ids,attention_mask=input_mask)
+                input_ids, input_mask, segment_ids, lm_label_ids, is_next = batch
+                outputs = model(input_ids=input_ids, token_type_ids=segment_ids, attention_mask=input_mask)
                 prediction_scores = outputs[0]
                 seq_relationship_score = outputs[1]
 
@@ -284,8 +284,8 @@ def main():
                 tr_mask_acc.update(mask_metric.value(), n=input_ids.size(0))
                 tr_sop_acc.update(sop_metric.value(), n=input_ids.size(0))
                 tr_loss.update(loss.item(), n=1)
-                tr_mask_loss.update(masked_lm_loss.item(),n =1)
-                tr_sop_loss.update(next_sentence_loss.item(),n = 1)
+                tr_mask_loss.update(masked_lm_loss.item(), n=1)
+                tr_sop_loss.update(next_sentence_loss.item(), n=1)
 
                 if (step + 1) % args.gradient_accumulation_steps == 0:
                     if args.fp16:
@@ -301,7 +301,7 @@ def main():
                     now = time.time()
                     eta = now - start_time
                     if eta > 3600:
-                        eta_format = ('%d:%02d:%02d' %(eta // 3600, (eta % 3600) // 60, eta % 60))
+                        eta_format = ('%d:%02d:%02d' % (eta // 3600, (eta % 3600) // 60, eta % 60))
                     elif eta > 60:
                         eta_format = '%d:%02d' % (eta // 60, eta % 60)
                     else:
@@ -312,7 +312,7 @@ def main():
                     train_logs['mask_loss'] = tr_mask_loss.avg
                     train_logs['sop_loss'] = tr_sop_loss.avg
                     show_info = f'[Training]:[{epoch}/{args.epochs}]{global_step}/{num_train_optimization_steps} ' \
-                                    f'- ETA: {eta_format}' + "-".join(
+                                f'- ETA: {eta_format}' + "-".join(
                         [f' {key}: {value:.4f} ' for key, value in train_logs.items()])
                     logger.info(show_info)
                     tr_mask_acc.reset()
@@ -345,4 +345,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

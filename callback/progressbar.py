@@ -4,7 +4,6 @@ class ProgressBar(object):
     '''
     custom progress bar
     Example:
-        >>> from progressbar import ProgressBar
         >>> pbar = ProgressBar(n_total=30,desc='training')
         >>> step = 2
         >>> pbar(step=step)

@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """PyTorch BERT model. """
-
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import json
@@ -35,20 +34,11 @@ from .file_utils import add_start_docstrings
 logger = logging.getLogger(__name__)
 
 BERT_PRETRAINED_MODEL_ARCHIVE_MAP = {
-    'bert-base-uncased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-uncased-pytorch_model.bin",
-    'bert-large-uncased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-uncased-pytorch_model.bin",
-    'bert-base-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-cased-pytorch_model.bin",
-    'bert-large-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-cased-pytorch_model.bin",
-    'bert-base-multilingual-uncased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-uncased-pytorch_model.bin",
-    'bert-base-multilingual-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-cased-pytorch_model.bin",
-    'bert-base-chinese': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese-pytorch_model.bin",
-    'bert-base-german-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-german-cased-pytorch_model.bin",
-    'bert-large-uncased-whole-word-masking': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-uncased-whole-word-masking-pytorch_model.bin",
-    'bert-large-cased-whole-word-masking': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-cased-whole-word-masking-pytorch_model.bin",
-    'bert-large-uncased-whole-word-masking-finetuned-squad': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-uncased-whole-word-masking-finetuned-squad-pytorch_model.bin",
-    'bert-large-cased-whole-word-masking-finetuned-squad': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-cased-whole-word-masking-finetuned-squad-pytorch_model.bin",
-    'bert-base-cased-finetuned-mrpc': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-cased-finetuned-mrpc-pytorch_model.bin",
+    'albert-xlarge-zh': "",
+    'albert-large-zh': "",
+    'albert-base-zh': "h",
 }
+
 
 def load_tf_weights_in_albert(model, config, tf_checkpoint_path):
     """ Load tf checkpoints in a pytorch model.
@@ -104,7 +94,7 @@ def load_tf_weights_in_albert(model, config, tf_checkpoint_path):
                 pointer = pointer[num]
         if m_name[-11:] == '_embeddings':
             pointer = getattr(pointer, 'weight')
-        if m_name[-13:] == '_embeddings_2':
+        elif m_name[-13:] == '_embeddings_2':
             pointer = getattr(pointer, 'weight')
             array = np.transpose(array)
         elif m_name == 'kernel':
@@ -249,11 +239,15 @@ class BertSelfOutput(nn.Module):
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.LayerNorm = BertLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.ln_type = config.ln_type
 
     def forward(self, hidden_states, input_tensor):
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.LayerNorm(hidden_states + input_tensor)
+        if self.ln_type == 'preln':
+            hidden_states = hidden_states + input_tensor
+        else:
+            hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
 
 
@@ -263,6 +257,7 @@ class BertAttention(nn.Module):
         self.self = BertSelfAttention(config)
         self.output = BertSelfOutput(config)
         self.pruned_heads = set()
+        self.ln_type = config.ln_type
 
     def prune_heads(self, heads):
         if len(heads) == 0:
@@ -288,7 +283,11 @@ class BertAttention(nn.Module):
         self.pruned_heads = self.pruned_heads.union(heads)
 
     def forward(self, input_tensor, attention_mask, head_mask=None):
-        self_outputs = self.self(input_tensor, attention_mask, head_mask)
+        if self.ln_type == 'preln':
+            hidden_state = self.output.LayerNorm(input_tensor)  # pre_ln
+            self_outputs = self.self(hidden_state, attention_mask, head_mask)
+        else:
+            self_outputs = self.self(input_tensor, attention_mask, head_mask)
         attention_output = self.output(self_outputs[0], input_tensor)
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
         return outputs
@@ -315,26 +314,53 @@ class BertOutput(nn.Module):
         self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
         self.LayerNorm = BertLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.ln_type = config.ln_type
 
     def forward(self, hidden_states, input_tensor):
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.LayerNorm(hidden_states + input_tensor)
+        if self.ln_type == 'preln':
+            hidden_states = hidden_states + input_tensor
+        else:
+            hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
 
 
 class BertLayer(nn.Module):
     def __init__(self, config):
         super(BertLayer, self).__init__()
-        self.attention = BertAttention(config)
-        self.intermediate = BertIntermediate(config)
-        self.output = BertOutput(config)
+        self.ln_type = config.ln_type
+        if config.share_type == 'ffn':
+            self.attention = nn.ModuleList([BertAttention(config) for _ in range(config.num_hidden_layers)])
+            self.intermediate = BertIntermediate(config)
+            self.output = BertOutput(config)
+        elif config.share_type == 'attention':
+            self.attention = BertAttention(config)
+            self.intermediate = nn.ModuleList([BertIntermediate(config) for _ in range(config.num_hidden_layers)])
+            self.output = nn.ModuleList([BertOutput(config) for _ in range(config.num_hidden_layers)])
+        else:
+            self.attention = BertAttention(config)
+            self.intermediate = BertIntermediate(config)
+            self.output = BertOutput(config)
 
-    def forward(self, hidden_states, attention_mask, head_mask=None):
-        attention_outputs = self.attention(hidden_states, attention_mask, head_mask)
+    def forward(self, hidden_states, attention_mask, layer_num, head_mask=None):
+        if isinstance(self.attention, nn.ModuleList):
+            attention_outputs = self.attention[layer_num](hidden_states, attention_mask, head_mask)
+        else:
+            attention_outputs = self.attention(hidden_states, attention_mask, head_mask)
         attention_output = attention_outputs[0]
-        intermediate_output = self.intermediate(attention_output)
-        layer_output = self.output(intermediate_output, attention_output)
+        if self.ln_type == 'preln':
+            attention_output_pre = self.output.LayerNorm(attention_output)
+        else:
+            attention_output_pre = attention_output
+        if isinstance(self.intermediate, nn.ModuleList):
+            intermediate_output = self.intermediate[layer_num](attention_output_pre)
+        else:
+            intermediate_output = self.intermediate(attention_output_pre)
+        if isinstance(self.output, nn.ModuleList):
+            layer_output = self.output[layer_num](intermediate_output, attention_output)
+        else:
+            layer_output = self.output(intermediate_output, attention_output)
         outputs = (layer_output,) + attention_outputs[1:]  # add attentions if we output them
         return outputs
 
@@ -345,8 +371,8 @@ class BertEncoder(nn.Module):
         self.output_attentions = config.output_attentions
         self.output_hidden_states = config.output_hidden_states
         self.num_hidden_layers = config.num_hidden_layers
-        self.share_parameter_across_layers = config.share_parameter_across_layers
-        if config.share_parameter_across_layers:
+        self.share_type = config.share_type
+        if config.share_type in ['all', 'ffn', 'attention']:
             self.layer_shared = BertLayer(config)
         else:
             self.layer = nn.ModuleList([BertLayer(config) for _ in range(config.num_hidden_layers)])
@@ -355,14 +381,15 @@ class BertEncoder(nn.Module):
         all_hidden_states = ()
         all_attentions = ()
         for i in range(self.num_hidden_layers):
-            if self.share_parameter_across_layers:
+            if self.share_type in ['all', 'ffn', 'attention']:
                 layer_module = self.layer_shared
             else:
                 layer_module = self.layer[i]
+
             if self.output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            layer_outputs = layer_module(hidden_states, attention_mask, head_mask[i])
+            layer_outputs = layer_module(hidden_states, attention_mask, i, head_mask[i])
             hidden_states = layer_outputs[0]
 
             if self.output_attentions:
@@ -411,24 +438,25 @@ class BertPredictionHeadTransform(nn.Module):
         hidden_states = self.LayerNorm(hidden_states)
         return hidden_states
 
+
 class BertLMPredictionHead(nn.Module):
     def __init__(self, config):
         super(BertLMPredictionHead, self).__init__()
         self.transform = BertPredictionHeadTransform(config)
-        self.share_parameter_across_layers = config.share_parameter_across_layers
         # The output weights are the same as the input embeddings, but there is
         # an output-only bias for each token.
-        if config.share_parameter_across_layers:
+        if config.hidden_size != config.embedding_size:
             self.project_layer = nn.Linear(config.hidden_size, config.embedding_size, bias=False)
             self.decoder = nn.Linear(config.embedding_size, config.vocab_size, bias=False)
         else:
+            self.project_layer = None
             self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
     def forward(self, hidden_states):
         hidden_states = self.transform(hidden_states)
-        if self.share_parameter_across_layers:
+        if self.project_layer:
             hidden_states = self.project_layer(hidden_states)
         hidden_states = self.decoder(hidden_states) + self.bias
         return hidden_states
@@ -694,7 +722,7 @@ class BertForPreTraining(BertPreTrainedModel):
         """ Make sure we are sharing the input and output embeddings.
             Export to TorchScript can't handle parameter sharing so we are cloning them instead.
         """
-        if config.share_parameter_across_layers:
+        if config.embedding_size != config.hidden_size:
             self._tie_or_clone_weights(self.cls.predictions.decoder,
                                        self.bert.embeddings.word_embeddings)
             self._tie_or_clone_data(self.cls.predictions.project_layer,
@@ -715,9 +743,8 @@ class BertForPreTraining(BertPreTrainedModel):
 
         sequence_output, pooled_output = outputs[:2]
         prediction_scores, seq_relationship_score = self.cls(sequence_output, pooled_output)
-
-        outputs = (prediction_scores, seq_relationship_score,) + outputs[
-                                                                 2:]  # add hidden states and attention if they are here
+        # add hidden states and attention if they are here
+        outputs = (prediction_scores, seq_relationship_score,) + outputs[2:]
 
         if masked_lm_labels is not None and next_sentence_label is not None:
             loss_fct = CrossEntropyLoss(ignore_index=-1)
@@ -728,10 +755,11 @@ class BertForPreTraining(BertPreTrainedModel):
 
         return outputs  # (loss), prediction_scores, seq_relationship_score, (hidden_states), (attentions)
 
+
 #
 @add_start_docstrings("""Bert Model transformer with a sequence classification/regression head on top (a linear layer on top of
     the pooled output) e.g. for GLUE tasks. """,
-    BERT_START_DOCSTRING, BERT_INPUTS_DOCSTRING)
+                      BERT_START_DOCSTRING, BERT_INPUTS_DOCSTRING)
 class BertForSequenceClassification(BertPreTrainedModel):
     r"""
         **labels**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size,)``:
@@ -763,15 +791,18 @@ class BertForSequenceClassification(BertPreTrainedModel):
         loss, logits = outputs[:2]
 
     """
+
     def __init__(self, config):
         super(BertForSequenceClassification, self).__init__(config)
         self.num_labels = config.num_labels
 
         self.bert = BertModel(config)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.dropout = nn.Dropout(0.2)
         self.classifier = nn.Linear(config.hidden_size, self.config.num_labels)
-
         self.init_weights()
+
+        # for p in self.bert.parameters():
+        #     p.requires_grad = False
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None,
                 position_ids=None, head_mask=None, labels=None):

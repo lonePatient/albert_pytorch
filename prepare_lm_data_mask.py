@@ -1,16 +1,17 @@
 import os
 import json
+import random
 import collections
 from configs.base import config
-from tools import logger, init_logger
+from common.tools import logger, init_logger
 from argparse import ArgumentParser
-from tools import seed_everything
+from common.tools import seed_everything
 from model.tokenization_bert import BertTokenizer
-import random
-from progressbar import ProgressBar
+from callback.progressbar import ProgressBar
 
 MaskedLmInstance = collections.namedtuple("MaskedLmInstance", ["index", "label"])
 init_logger(log_file=config['log_dir'] / ("pregenerate_training_data.log"))
+
 
 def truncate_seq_pair(tokens_a, tokens_b, max_num_tokens):
     """Truncates a pair of sequences to a maximum sequence length."""
@@ -61,7 +62,8 @@ def create_instances_from_document(all_documents, document_index, max_seq_length
     i = 0
     # print("###document:",document) # 一个document可以是一整篇文章、新闻、词条等. document:[['是', '爷', '们', '，', '就', '得', '给', '媳', '妇', '幸', '福'], ['关', '注', '【', '晨', '曦', '教', '育', '】', '，', '获', '取', '育', '儿', '的', '智', '慧', '，', '与', '孩', '子', '一', '同', '成', '长', '！'], ['方', '法', ':', '打', '开', '微', '信', '→', '添', '加', '朋', '友', '→', '搜', '号', '→', '##he', '##bc', '##x', '##jy', '##→', '关', '注', '!', '我', '是', '一', '个', '爷', '们', '，', '孝', '顺', '是', '做', '人', '的', '第', '一', '准', '则', '。'], ['甭', '管', '小', '时', '候', '怎', '么', '跟', '家', '长', '犯', '混', '蛋', '，', '长', '大', '了', '，', '就', '底', '报', '答', '父', '母', '，', '以', '后', '我', '媳', '妇', '也', '必', '须', '孝', '顺', '。'], ['我', '是', '一', '个', '爷', '们', '，', '可', '以', '花', '心', '，', '可', '以', '好', '玩', '。'], ['但', '我', '一', '定', '会', '找', '一', '个', '管', '的', '住', '我', '的', '女', '人', '，', '和', '我', '一', '起', '生', '活', '。'], ['28', '岁', '以', '前', '在', '怎', '么', '玩', '都', '行', '，', '但', '我', '最', '后', '一', '定', '会', '找', '一', '个', '勤', '俭', '持', '家', '的', '女', '人', '。'], ['我', '是', '一', '爷', '们', '，', '我', '不', '会', '让', '自', '己', '的', '女', '人', '受', '一', '点', '委', '屈', '，', '每', '次', '把', '她', '抱', '在', '怀', '里', '，', '看', '她', '洋', '溢', '着', '幸', '福', '的', '脸', '，', '我', '都', '会', '引', '以', '为', '傲', '，', '这', '特', '么', '就', '是', '我', '的', '女', '人', '。'], ['我', '是', '一', '爷', '们', '，', '干', '什', '么', '也', '不', '能', '忘', '了', '自', '己', '媳', '妇', '，', '就', '算', '和', '哥', '们', '一', '起', '喝', '酒', '，', '喝', '到', '很', '晚', '，', '也', '要', '提', '前', '打', '电', '话', '告', '诉', '她', '，', '让', '她', '早', '点', '休', '息', '。'], ['我', '是', '一', '爷', '们', '，', '我', '媳', '妇', '绝', '对', '不', '能', '抽', '烟', '，', '喝', '酒', '还', '勉', '强', '过', '得', '去', '，', '不', '过', '该', '喝', '的', '时', '候', '喝', '，', '不', '该', '喝', '的', '时', '候', '，', '少', '扯', '纳', '极', '薄', '蛋', '。'], ['我', '是', '一', '爷', '们', '，', '我', '媳', '妇', '必', '须', '听', '我', '话', '，', '在', '人', '前', '一', '定', '要', '给', '我', '面', '子', '，', '回', '家', '了', '咱', '什', '么', '都', '好', '说', '。'], ['我', '是', '一', '爷', '们', '，', '就', '算', '难', '的', '吃', '不', '上', '饭', '了', '，', '都', '不', '张', '口', '跟', '媳', '妇', '要', '一', '分', '钱', '。'], ['我', '是', '一', '爷', '们', '，', '不', '管', '上', '学', '还', '是', '上', '班', '，', '我', '都', '会', '送', '媳', '妇', '回', '家', '。'], ['我', '是', '一', '爷', '们', '，', '交', '往', '不', '到', '1', '年', '，', '绝', '对', '不', '会', '和', '媳', '妇', '提', '过', '分', '的', '要', '求', '，', '我', '会', '尊', '重', '她', '。'], ['我', '是', '一', '爷', '们', '，', '游', '戏', '永', '远', '比', '不', '上', '我', '媳', '妇', '重', '要', '，', '只', '要', '媳', '妇', '发', '话', '，', '我', '绝', '对', '唯', '命', '是', '从', '。'], ['我', '是', '一', '爷', '们', '，', '上', 'q', '绝', '对', '是', '为', '了', '等', '媳', '妇', '，', '所', '有', '暧', '昧', '的', '心', '情', '只', '为', '她', '一', '个', '女', '人', '而', '写', '，', '我', '不', '一', '定', '会', '经', '常', '写', '日', '志', '，', '可', '是', '我', '会', '告', '诉', '全', '世', '界', '，', '我', '很', '爱', '她', '。'], ['我', '是', '一', '爷', '们', '，', '不', '一', '定', '要', '经', '常', '制', '造', '浪', '漫', '、', '偶', '尔', '过', '个', '节', '日', '也', '要', '送', '束', '玫', '瑰', '花', '给', '媳', '妇', '抱', '回', '家', '。'], ['我', '是', '一', '爷', '们', '，', '手', '机', '会', '24', '小', '时', '为', '她', '开', '机', '，', '让', '她', '半', '夜', '痛', '经', '的', '时', '候', '，', '做', '恶', '梦', '的', '时', '候', '，', '随', '时', '可', '以', '联', '系', '到', '我', '。'], ['我', '是', '一', '爷', '们', '，', '我', '会', '经', '常', '带', '媳', '妇', '出', '去', '玩', '，', '她', '不', '一', '定', '要', '和', '我', '所', '有', '的', '哥', '们', '都', '认', '识', '，', '但', '见', '面', '能', '说', '的', '上', '话', '就', '行', '。'], ['我', '是', '一', '爷', '们', '，', '我', '会', '和', '媳', '妇', '的', '姐', '妹', '哥', '们', '搞', '好', '关', '系', '，', '让', '她', '们', '相', '信', '我', '一', '定', '可', '以', '给', '我', '媳', '妇', '幸', '福', '。'], ['我', '是', '一', '爷', '们', '，', '吵', '架', '后', '、', '也', '要', '主', '动', '打', '电', '话', '关', '心', '她', '，', '咱', '是', '一', '爷', '们', '，', '给', '媳', '妇', '服', '个', '软', '，', '道', '个', '歉', '怎', '么', '了', '？'], ['我', '是', '一', '爷', '们', '，', '绝', '对', '不', '会', '嫌', '弃', '自', '己', '媳', '妇', '，', '拿', '她', '和', '别', '人', '比', '，', '说', '她', '这', '不', '如', '人', '家', '，', '纳', '不', '如', '人', '家', '的', '。'], ['我', '是', '一', '爷', '们', '，', '陪', '媳', '妇', '逛', '街', '时', '，', '碰', '见', '熟', '人', '，', '无', '论', '我', '媳', '妇', '长', '的', '好', '看', '与', '否', '，', '我', '都', '会', '大', '方', '的', '介', '绍', '。'], ['谁', '让', '咱', '爷', '们', '就', '好', '这', '口', '呢', '。'], ['我', '是', '一', '爷', '们', '，', '我', '想', '我', '会', '给', '我', '媳', '妇', '最', '好', '的', '幸', '福', '。'], ['【', '我', '们', '重', '在', '分', '享', '。'], ['所', '有', '文', '字', '和', '美', '图', '，', '来', '自', '网', '络', '，', '晨', '欣', '教', '育', '整', '理', '。'], ['对', '原', '文', '作', '者', '，', '表', '示', '敬', '意', '。'], ['】', '关', '注', '晨', '曦', '教', '育', '[UNK]', '[UNK]', '晨', '曦', '教', '育', '（', '微', '信', '号', '：', 'he', '##bc', '##x', '##jy', '）', '。'], ['打', '开', '微', '信', '，', '扫', '描', '二', '维', '码', '，', '关', '注', '[UNK]', '晨', '曦', '教', '育', '[UNK]', '，', '获', '取', '更', '多', '育', '儿', '资', '源', '。'], ['点', '击', '下', '面', '订', '阅', '按', '钮', '订', '阅', '，', '会', '有', '更', '多', '惊', '喜', '哦', '！']]
     while i < len(document):  # 从文档的第一个位置开始，按个往下看
-        segment = document[i]  # segment是列表，代表的是按字分开的一个完整句子，如 segment=['我', '是', '一', '爷', '们', '，', '我', '想', '我', '会', '给', '我', '媳', '妇', '最', '好', '的', '幸', '福', '。']
+        segment = document[
+            i]  # segment是列表，代表的是按字分开的一个完整句子，如 segment=['我', '是', '一', '爷', '们', '，', '我', '想', '我', '会', '给', '我', '媳', '妇', '最', '好', '的', '幸', '福', '。']
         # segment = get_new_segment(segment)  # whole word mask for chinese: 结合分词的中文的whole mask设置即在需要的地方加上“##”
         current_chunk.append(segment)  # 将一个独立的句子加入到当前的文本块中
         current_length += len(segment)  # 累计到为止位置接触到句子的总长度
@@ -193,7 +195,7 @@ def create_training_instances(input_file, tokenizer, max_seq_len, short_seq_prob
 
     vocab_words = list(tokenizer.vocab.keys())
     instances = []
-    pbar = ProgressBar(n_total=len(all_documents),desc ='create instances')
+    pbar = ProgressBar(n_total=len(all_documents), desc='create instances')
     for document_index in range(len(all_documents)):
         instances.extend(
             create_instances_from_document(
@@ -201,19 +203,20 @@ def create_training_instances(input_file, tokenizer, max_seq_len, short_seq_prob
                 masked_lm_prob, max_predictions_per_seq, vocab_words))
         pbar(step=document_index)
     print(' ')
-
-    for ex_idx,instance in enumerate(instances):
-        if ex_idx < 5:
-            print("-------------------------Example-----------------------")
-            print("id: %s" % (ex_idx))
-            print("tokens: %s" % " ".join([str(x) for x in instance['tokens']]))
-            print("masked_lm_labels: %s" % " ".join([str(x) for x in instance['masked_lm_labels']]))
-            print("segment_ids: %s" % " ".join([str(x) for x in instance['segment_ids']]))
-            print("masked_lm_positions: %s" % " ".join([str(x) for x in instance['masked_lm_positions']]))
-            print("is random next : %d" % instance['is_random_next'])
-
+    ex_idx = 0
+    while ex_idx < 5:
+        instance = instances[ex_idx]
+        logger.info("-------------------------Example-----------------------")
+        logger.info(f"id: {ex_idx}")
+        logger.info(f"tokens: {' '.join([str(x) for x in instance['tokens']])}")
+        logger.info(f"masked_lm_labels: {' '.join([str(x) for x in instance['masked_lm_labels']])}")
+        logger.info(f"segment_ids: {' '.join([str(x) for x in instance['segment_ids']])}")
+        logger.info(f"masked_lm_positions: {' '.join([str(x) for x in instance['masked_lm_positions']])}")
+        logger.info(f"is_random_next : {instance['is_random_next']}")
+        ex_idx += 1
     random.shuffle(instances)
     return instances
+
 
 def main():
     parser = ArgumentParser()
@@ -234,8 +237,8 @@ def main():
                         help="Maximum number of tokens to mask in each sequence")
     args = parser.parse_args()
     seed_everything(args.seed)
-
-    tokenizer = BertTokenizer(vocab_file=config['checkpoint_dir'] / 'vocab.txt', do_lower_case=args.do_lower_case)
+    logger.info("pregenerate training data parameters:\n %s", args)
+    tokenizer = BertTokenizer(vocab_file=config['data_dir'] / 'vocab.txt', do_lower_case=args.do_lower_case)
 
     if args.do_split:
         corpus_path = config['data_dir'] / "corpus/corpus.txt"
@@ -249,14 +252,6 @@ def main():
     if args.do_data:
         data_path = config['data_dir'] / "corpus/train"
         files = sorted([f for f in config['data_dir'].iterdir() if f.exists() and '.txt' in str(f)])
-
-        logger.info("--- pregenerate training data parameters ---")
-        logger.info(f'max_seq_len: {args.max_seq_len}')
-        logger.info(f"max_predictions_per_seq: {args.max_predictions_per_seq}")
-        logger.info(f"masked_lm_prob: {args.masked_lm_prob}")
-        logger.info(f"seed: {args.seed}")
-        logger.info(f"mask file num : {args.file_num}")
-        logger.info(f"train file num : {len(files)}")
 
         for idx in range(args.file_num):
             logger.info(f"pregenetate file_{idx}.json")
@@ -283,6 +278,7 @@ def main():
                     "max_seq_len": args.max_seq_len
                 }
                 metrics_file.write(json.dumps(metrics))
+
 
 if __name__ == '__main__':
     main()

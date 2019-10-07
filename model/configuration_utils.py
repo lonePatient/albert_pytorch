@@ -160,6 +160,8 @@ class PretrainedConfig(object):
             if hasattr(config, key):
                 setattr(config, key, value)
                 to_remove.append(key)
+            else:
+                setattr(config,key,value)
         for key in to_remove:
             kwargs.pop(key, None)
 

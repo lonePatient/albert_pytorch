@@ -1,18 +1,19 @@
 from __future__ import absolute_import, division, print_function
 import argparse
 import torch
-from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,TensorDataset)
+from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler, TensorDataset)
 from model.file_utils import WEIGHTS_NAME, CONFIG_NAME
-from model.modeling_bert import BertConfig
+from model.modeling_albert import BertConfig
 from model.optimization import AdamW, WarmupLinearSchedule
-from tools import seed_everything
-from tools import logger, init_logger
+from common.tools import seed_everything
+from common.tools import logger, init_logger
 from configs.base import config
-from model.modeling_bert import BertForSequenceClassification
-from progressbar import ProgressBar
+from model.modeling_albert import BertForSequenceClassification
+from callback.progressbar import ProgressBar
 from lcqmc_progressor import BertProcessor
-from metrics import Accuracy
-from tools import AverageMeter
+from common.metrics import Accuracy
+from common.tools import AverageMeter
+
 
 def train(args, train_dataloader, eval_dataloader, metrics, model):
     """ Train the model """
@@ -111,6 +112,7 @@ def train(args, train_dataloader, eval_dataloader, metrics, model):
             with open(str(output_config_file), 'w') as f:
                 f.write(model_to_save.config.to_json_string())
 
+
 def evaluate(args, model, eval_dataloader, metrics):
     # Eval!
     logger.info("  Num examples = %d", len(eval_dataloader))
@@ -130,7 +132,7 @@ def evaluate(args, model, eval_dataloader, metrics):
             inputs['token_type_ids'] = batch[2]
             outputs = model(**inputs)
             loss, logits = outputs[:2]
-            eval_loss.update(loss.item(), n=1)
+            eval_loss.update(loss.item(), n=batch[0].size()[0])
         preds.append(logits.cpu().detach())
         targets.append(inputs['labels'].cpu().detach())
         pbar(bid)
@@ -145,14 +147,15 @@ def evaluate(args, model, eval_dataloader, metrics):
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--arch", default='albert', type=str)
+    parser.add_argument("--arch", default='albert_xlarge', type=str)
     parser.add_argument('--task_name', default='lcqmc', type=str)
-    parser.add_argument("--train_max_seq_len", default=60, type=int,
+    parser.add_argument("--train_max_seq_len", default=64, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences longer "
                              "than this will be truncated, sequences shorter will be padded.")
-    parser.add_argument("--eval_max_seq_len", default=60, type=int,
+    parser.add_argument("--eval_max_seq_len", default=64, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences longer "
                              "than this will be truncated, sequences shorter will be padded.")
+    parser.add_argument('--share_type', default='all', type=str, choices=['all', 'attention', 'ffn', 'None'])
     parser.add_argument("--do_train", action='store_true',
                         help="Whether to run training.")
     parser.add_argument("--do_eval", action='store_true',
@@ -176,7 +179,7 @@ def main():
                         help="Weight deay if we apply some.")
     parser.add_argument("--adam_epsilon", default=1e-8, type=float,
                         help="Epsilon for Adam optimizer.")
-    parser.add_argument("--max_grad_norm", default=1.0, type=float,
+    parser.add_argument("--max_grad_norm", default=5.0, type=float,
                         help="Max gradient norm.")
     parser.add_argument("--num_train_epochs", default=3.0, type=float,
                         help="Total number of training epochs to perform.")
@@ -234,18 +237,15 @@ def main():
     # Set seed
     seed_everything(args.seed)
     # --------- data
-    processor = BertProcessor(vocab_path=config['bert_dir'] / 'vocab.txt', do_lower_case=args.do_lower_case)
+    processor = BertProcessor(vocab_path=config['albert_vocab_path'], do_lower_case=args.do_lower_case)
     label_list = processor.get_labels()
     num_labels = len(label_list)
-
 
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
-    bert_config = BertConfig.from_json_file(str(config['bert_dir'] / 'bert_config.json'))
-
-    bert_config.share_parameter_across_layers = True
-    bert_config.num_labels = num_labels
+    bert_config = BertConfig.from_pretrained(str(config['albert_config_path']),
+                                             share_type=args.share_type, num_labels=num_labels)
 
     logger.info("Training/evaluation parameters %s", args)
     metrics = Accuracy(topK=1)
@@ -282,16 +282,17 @@ def main():
             torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
         model.to(args.device)
         train(args, train_dataloader, valid_dataloader, metrics, model)
+
     if args.do_test:
         test_data = processor.get_train(config['data_dir'] / "test.txt")
         test_examples = processor.create_examples(lines=test_data,
                                                   example_type='test',
                                                   cached_examples_file=config[
-                                                  'data_dir'] / f"cached_test_examples_{args.arch}")
+                                                                           'data_dir'] / f"cached_test_examples_{args.arch}")
         test_features = processor.create_features(examples=test_examples,
                                                   max_seq_len=args.eval_max_seq_len,
                                                   cached_features_file=config[
-                                                  'data_dir'] / "cached_test_features_{}_{}".format(
+                                                                           'data_dir'] / "cached_test_features_{}_{}".format(
                                                       args.eval_max_seq_len, args.arch
                                                   ))
         test_dataset = processor.create_dataset(test_features)
