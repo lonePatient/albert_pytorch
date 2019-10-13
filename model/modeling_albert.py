@@ -350,7 +350,10 @@ class BertLayer(nn.Module):
             attention_outputs = self.attention(hidden_states, attention_mask, head_mask)
         attention_output = attention_outputs[0]
         if self.ln_type == 'preln':
-            attention_output_pre = self.output.LayerNorm(attention_output)
+            if isinstance(self.intermediate, nn.ModuleList):
+                attention_output_pre = self.output[layer_num].LayerNorm(attention_output)
+            else:
+                attention_output_pre = self.output.LayerNorm(attention_output)
         else:
             attention_output_pre = attention_output
         if isinstance(self.intermediate, nn.ModuleList):
