@@ -6,24 +6,19 @@ from pathlib import Path
 from argparse import ArgumentParser
 from collections import namedtuple
 from tempfile import TemporaryDirectory
-from common.tools import logger, init_logger
-from configs.base import config
+from tools.common import logger, init_logger
 from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
-from common.tools import AverageMeter
-from common.metrics import LMAccuracy
-from torch.nn import CrossEntropyLoss, MSELoss
-from model.modeling_albert import BertForPreTraining, BertConfig
+from tools.common import AverageMeter
+from metrics.custom_metrics import LMAccuracy
+from torch.nn import CrossEntropyLoss
+from model.modeling_albert import AlbertForPreTraining, BertConfig
 from model.file_utils import CONFIG_NAME
 from model.tokenization_bert import BertTokenizer
 from model.optimization import AdamW, WarmupLinearSchedule
-from callback.optimizater import Lamb
-from common.tools import seed_everything
+from tools.common import seed_everything
 
 InputFeatures = namedtuple("InputFeatures", "input_ids input_mask segment_ids lm_label_ids is_next")
-init_logger(log_file=config['log_dir'] / ("train_albert_model.log"))
-
-
 def convert_example_to_features(example, tokenizer, max_seq_length):
     tokens = example["tokens"]
     segment_ids = example["segment_ids"]
@@ -49,7 +44,6 @@ def convert_example_to_features(example, tokenizer, max_seq_length):
                              lm_label_ids=lm_label_array,
                              is_next=is_random_next)
     return features
-
 
 class PregeneratedDataset(Dataset):
     def __init__(self, training_path, file_id, tokenizer, data_name, reduce_memory=False):
@@ -113,10 +107,16 @@ class PregeneratedDataset(Dataset):
                 torch.tensor(self.segment_ids[item].astype(np.int64)),
                 torch.tensor(self.lm_label_ids[item].astype(np.int64)),
                 torch.tensor(self.is_nexts[item].astype(np.int64)))
-
-
 def main():
     parser = ArgumentParser()
+    ## Required parameters
+    parser.add_argument("--data_dir", default=None, type=str, required=True,
+                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.")
+    parser.add_argument("--config_path", default=None, type=str, required=True)
+    parser.add_argument("--vocab_path",default=None,type=str,required=True)
+    parser.add_argument("--output_dir", default=None, type=str, required=True,
+                        help="The output directory where the model predictions and checkpoints will be written.")
+    parser.add_argument("--model_path", default='', type=str)
     parser.add_argument('--data_name', default='albert', type=str)
     parser.add_argument("--file_num", type=int, default=10,
                         help="Number of dynamic masking to pregenerate (with different masks)")
@@ -124,11 +124,15 @@ def main():
                         help="Store training data as on-disc memmaps to massively reduce memory usage")
     parser.add_argument("--epochs", type=int, default=4,
                         help="Number of epochs to train for")
+    parser.add_argument("--do_lower_case", action='store_true',
+                        help="Set this flag if you are using an uncased model.")
     parser.add_argument('--share_type',default='all',type=str,choices=['all','attention','ffn','None'])
     parser.add_argument('--num_eval_steps', default=100)
     parser.add_argument('--num_save_steps', default=200)
     parser.add_argument("--local_rank", type=int, default=-1,
                         help="local_rank for distributed training on gpus")
+    parser.add_argument("--weight_decay", default=0.01, type=float,
+                        help="Weight deay if we apply some.")
     parser.add_argument("--no_cuda", action='store_true',
                         help="Whether not to use CUDA when available")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
@@ -155,7 +159,11 @@ def main():
                         help="Whether to use 16-bit float precision instead of 32-bit")
     args = parser.parse_args()
 
-    pregenerated_data = config['data_dir'] / "corpus/train"
+    args.data_dir = Path(args.data_dir)
+    args.output_dir = Path(args.output_dir)
+
+    pregenerated_data = args.data_dir / "corpus/train"
+    init_logger(log_file=str(args.output_dir/ "train_albert_model.log"))
     assert pregenerated_data.is_dir(), \
         "--pregenerated_data should point to the folder of files made by prepare_lm_data_mask.py!"
 
@@ -190,8 +198,9 @@ def main():
         raise ValueError(
             f"Invalid gradient_accumulation_steps parameter: {args.gradient_accumulation_steps}, should be >= 1")
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
+
     seed_everything(args.seed)
-    tokenizer = BertTokenizer(vocab_file=config['albert_vocab_path'])
+    tokenizer = BertTokenizer.from_pretrained(args.vocab_path, do_lower_case=args.do_lower_case)
     total_train_examples = samples_per_epoch * args.epochs
 
     num_train_optimization_steps = int(
@@ -200,15 +209,16 @@ def main():
         num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
     args.warmup_steps = int(num_train_optimization_steps * args.warmup_proportion)
 
-    bert_config = BertConfig.from_pretrained(str(config['albert_config_path']),share_type=args.share_type)
-    model = BertForPreTraining(config=bert_config)
-    # model = BertForMaskedLM.from_pretrained(config['checkpoint_dir'] / 'checkpoint-580000')
+    bert_config = BertConfig.from_pretrained(args.config_path,share_type=args.share_type)
+    model = AlbertForPreTraining(config=bert_config)
+    if args.model_path:
+        model = AlbertForPreTraining.from_pretrained(args.model_path)
     model.to(device)
     # Prepare optimizer
     param_optimizer = list(model.named_parameters())
     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
-        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
+        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': args.weight_decay},
         {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
@@ -325,7 +335,7 @@ def main():
                 if global_step % args.num_save_steps == 0:
                     if args.local_rank in [-1, 0] and args.num_save_steps > 0:
                         # Save model checkpoint
-                        output_dir = config['checkpoint_dir'] / f'lm-checkpoint-{global_step}'
+                        output_dir = args.output_dir / f'lm-checkpoint-{global_step}'
                         if not output_dir.exists():
                             output_dir.mkdir()
                         # save model
@@ -339,9 +349,18 @@ def main():
                         output_config_file = output_dir / CONFIG_NAME
                         with open(str(output_config_file), 'w') as f:
                             f.write(model_to_save.config.to_json_string())
-
                         # save vocab
                         tokenizer.save_vocabulary(output_dir)
 
 if __name__ == '__main__':
     main()
+'''
+python run_pretraining.py \
+    --data_dir=dataset/ \
+    --vocab_path=configs/vocab.txt \
+    --data_name=albert \
+    --config_path=configs/albert_config_base.json \
+    --output_dir=outputs/ \
+    --data_name=albert \
+    --share_type=all
+'''

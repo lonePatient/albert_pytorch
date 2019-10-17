@@ -3,16 +3,14 @@ import json
 import random
 import numpy as np
 import collections
-from configs.base import config
-from common.tools import logger, init_logger
+from pathlib import Path
+from tools.common import logger, init_logger
 from argparse import ArgumentParser
-from common.tools import seed_everything
+from tools.common import seed_everything
 from model.tokenization_bert import BertTokenizer
 from callback.progressbar import ProgressBar
 
 MaskedLmInstance = collections.namedtuple("MaskedLmInstance", ["index", "label"])
-init_logger(log_file=config['log_dir'] / ("pregenerate_training_data_ngram.log"))
-
 
 def truncate_seq_pair(tokens_a, tokens_b, max_num_tokens):
     """Truncates a pair of sequences to a maximum sequence length."""
@@ -131,7 +129,6 @@ def create_masked_lm_predictions(tokens, max_ngram, masked_lm_prob, max_predicti
     ngrams = np.arange(1, max_ngram + 1, dtype=np.int64)
     pvals = 1. / np.arange(1, max_ngram + 1)
     pvals /= pvals.sum(keepdims=True)  # p(n) = 1/n / sigma(1/k)
-
     cand_indices = []
     for (i, token) in enumerate(tokens):
         if token == "[CLS]" or token == "[SEP]":
@@ -146,22 +143,16 @@ def create_masked_lm_predictions(tokens, max_ngram, masked_lm_prob, max_predicti
         # at all -- we still predict each WordPiece independently, softmaxed
         # over the entire vocabulary.
         cand_indices.append(i)
-
     num_to_mask = min(max_predictions_per_seq, max(1, int(round(len(tokens) * masked_lm_prob))))
     random.shuffle(cand_indices)
-
     masked_token_labels = []
     covered_indices = set()
-
     for index in cand_indices:
-
         n = np.random.choice(ngrams, p=pvals)
         if len(masked_token_labels) >= num_to_mask:
             break
-
         if index in covered_indices:
             continue
-
         if index < len(cand_indices) - (n - 1):
             for i in range(n):
                 ind = index + i
@@ -178,18 +169,14 @@ def create_masked_lm_predictions(tokens, max_ngram, masked_lm_prob, max_predicti
                     # 10% of the time, replace with random word
                     else:
                         masked_token = random.choice(vocab_list)
-
                 masked_token_labels.append(MaskedLmInstance(index=ind, label=tokens[ind]))
                 tokens[ind] = masked_token
 
+    assert len(masked_token_labels) <= num_to_mask
     masked_token_labels = sorted(masked_token_labels, key=lambda x: x.index)
-    mask_indices = []
-    masked_labels = []
-    for p in masked_token_labels:
-        mask_indices.append(p.index)
-        masked_labels.append(p.label)
+    mask_indices = [p.index for p in masked_token_labels]
+    masked_labels = [p.label for p in masked_token_labels]
     return tokens, mask_indices, masked_labels
-
 
 def create_training_instances(input_file, tokenizer, max_seq_len, short_seq_prob,
                               max_ngram, masked_lm_prob, max_predictions_per_seq):
@@ -245,6 +232,11 @@ def create_training_instances(input_file, tokenizer, max_seq_len, short_seq_prob
 
 def main():
     parser = ArgumentParser()
+    ## Required parameters
+    parser.add_argument("--data_dir", default=None, type=str, required=True)
+    parser.add_argument("--vocab_path", default=None, type=str, required=True)
+    parser.add_argument("--output_dir", default=None, type=str, required=True)
+
     parser.add_argument('--data_name', default='albert', type=str)
     parser.add_argument('--max_ngram', default=3, type=int)
     parser.add_argument("--do_data", default=False, action='store_true')
@@ -263,23 +255,27 @@ def main():
                         help="Maximum number of tokens to mask in each sequence")
     args = parser.parse_args()
     seed_everything(args.seed)
-
+    args.data_dir = Path(args.data_dir)
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
+    init_logger(log_file=args.output_dir +"pregenerate_training_data_ngram.log")
     logger.info("pregenerate training data parameters:\n %s", args)
-    tokenizer = BertTokenizer(vocab_file=config['data_dir'] / 'vocab.txt', do_lower_case=args.do_lower_case)
+    tokenizer = BertTokenizer(vocab_file=args.vocab_path, do_lower_case=args.do_lower_case)
 
+    # split big file
     if args.do_split:
-        corpus_path = config['data_dir'] / "corpus/corpus.txt"
-        split_save_path = config['data_dir'] / "corpus/train"
+        corpus_path =args.data_dir / "corpus/corpus.txt"
+        split_save_path = args.data_dir / "/corpus/train"
         if not split_save_path.exists():
             split_save_path.mkdir(exist_ok=True)
         line_per_file = args.line_per_file
         command = f'split -a 4 -l {line_per_file} -d {corpus_path} {split_save_path}/shard_'
         os.system(f"{command}")
 
+    # generator train data
     if args.do_data:
-        data_path = config['data_dir'] / "corpus/train"
+        data_path = args.data_dir / "corpus/train"
         files = sorted([f for f in data_path.parent.iterdir() if f.exists() and '.txt' in str(f)])
-
         for idx in range(args.file_num):
             logger.info(f"pregenetate {args.data_name}_file_{idx}.json")
             save_filename = data_path / f"{args.data_name}_file_{idx}.json"
@@ -307,6 +303,15 @@ def main():
                 }
                 metrics_file.write(json.dumps(metrics))
 
-
 if __name__ == '__main__':
     main()
+
+'''
+python prepare_lm_data_ngram.py \
+    --data_dir=dataset/ \
+    --vocab_path=vocab.txt \
+    --output_dir=outputs/ \
+    --data_name=albert \
+    --max_ngram=3 \
+    --do_data
+'''

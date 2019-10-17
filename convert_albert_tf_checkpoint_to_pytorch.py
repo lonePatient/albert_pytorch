@@ -21,7 +21,7 @@ from __future__ import print_function
 import argparse
 import torch
 
-from model.modeling_albert import BertConfig, BertForPreTraining, load_tf_weights_in_albert
+from model.modeling_albert import BertConfig, AlbertForPreTraining, load_tf_weights_in_albert
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +30,7 @@ def convert_tf_checkpoint_to_pytorch(tf_checkpoint_path, bert_config_file,share_
     # Initialise PyTorch model
     config = BertConfig.from_pretrained(bert_config_file,share_type=share_type)
     # print("Building PyTorch model from configuration: {}".format(str(config)))
-    model = BertForPreTraining(config)
+    model = AlbertForPreTraining(config)
 
     # Load weights from tf checkpoint
     load_tf_weights_in_albert(model, config, tf_checkpoint_path)
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     parser.add_argument('--share_type',
                         default='all',
                         type=str,
-                        choices=['all', 'attention', 'ffn', 'None'])
+                        choices=['all', 'attention', 'ffn','None'])
     parser.add_argument("--pytorch_dump_path",
                         default = None,
                         type = str,
@@ -70,12 +70,8 @@ if __name__ == "__main__":
                                      args.pytorch_dump_path)
 
 '''
-example:
-
 python convert_albert_tf_checkpoint_to_pytorch.py \
-    --tf_checkpoint_path=./pretrain/tf/albert_xlarge_zh \
-    --bert_config_file=./configs/albert_config_xlarge.json \
-    --pytorch_dump_path=./pretrain/pytorch/albert_xlarge_zh/pytorch_model.bin \
-    --share_type=all
-
+    --tf_checkpoint_path=./prev_trained_model/albert_tiny_tf \
+    --bert_config_file=./prev_trained_model/albert_tiny_tf/albert_config_tiny.json \
+    --pytorch_dump_path=./prev_trained_model/albert_tiny/pytorch_model.bin
 '''

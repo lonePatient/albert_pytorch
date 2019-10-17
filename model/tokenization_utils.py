@@ -25,6 +25,8 @@ from io import open
 
 from .file_utils import cached_path
 
+import torch
+
 logger = logging.getLogger(__name__)
 
 SPECIAL_TOKENS_MAP_FILE = 'special_tokens_map.json'
@@ -231,13 +233,13 @@ class PreTrainedTokenizer(object):
     @classmethod
     def from_pretrained(cls, *inputs, **kwargs):
         r"""
-        Instantiate a :class:`~pytorch_transformers.PreTrainedTokenizer` (or a derived class) from a predefined tokenizer.
+        Instantiate a :class:`~transformers.PreTrainedTokenizer` (or a derived class) from a predefined tokenizer.
 
         Args:
             pretrained_model_name_or_path: either:
 
                 - a string with the `shortcut name` of a predefined tokenizer to load from cache or download, e.g.: ``bert-base-uncased``.
-                - a path to a `directory` containing vocabulary files required by the tokenizer, for instance saved using the :func:`~pytorch_transformers.PreTrainedTokenizer.save_pretrained` method, e.g.: ``./my_model_directory/``.
+                - a path to a `directory` containing vocabulary files required by the tokenizer, for instance saved using the :func:`~transformers.PreTrainedTokenizer.save_pretrained` method, e.g.: ``./my_model_directory/``.
                 - (not applicable to all derived classes) a path or url to a single saved vocabulary file if and only if the tokenizer only requires a single vocabulary file (e.g. Bert, XLNet), e.g.: ``./my_model_directory/vocab.txt``.
 
             cache_dir: (`optional`) string:
@@ -252,7 +254,7 @@ class PreTrainedTokenizer(object):
 
             inputs: (`optional`) positional arguments: will be passed to the Tokenizer ``__init__`` method.
 
-            kwargs: (`optional`) keyword arguments: will be passed to the Tokenizer ``__init__`` method. Can be used to set special tokens like ``bos_token``, ``eos_token``, ``unk_token``, ``sep_token``, ``pad_token``, ``cls_token``, ``mask_token``, ``additional_special_tokens``. See parameters in the doc string of :class:`~pytorch_transformers.PreTrainedTokenizer` for details.
+            kwargs: (`optional`) keyword arguments: will be passed to the Tokenizer ``__init__`` method. Can be used to set special tokens like ``bos_token``, ``eos_token``, ``unk_token``, ``sep_token``, ``pad_token``, ``cls_token``, ``mask_token``, ``additional_special_tokens``. See parameters in the doc string of :class:`~transformers.PreTrainedTokenizer` for details.
 
         Examples::
 
@@ -332,13 +334,13 @@ class PreTrainedTokenizer(object):
                 vocab_files[file_id] = full_file_name
 
             if all(full_file_name is None for full_file_name in vocab_files.values()):
-                logger.error(
-                    "Model name '{}' was not found in model name list ({}). "
-                    "We assumed '{}' was a path or url but couldn't find tokenizer files"
-                    "at this path or url.".format(
+                raise EnvironmentError(
+                    "Model name '{}' was not found in tokenizers model name list ({}). "
+                    "We assumed '{}' was a path or url to a directory containing vocabulary files "
+                    "named {} but couldn't find such vocabulary files at this path or url.".format(
                         pretrained_model_name_or_path, ', '.join(s3_models),
-                        pretrained_model_name_or_path, ))
-                return None
+                        pretrained_model_name_or_path, 
+                        list(cls.vocab_files_names.values())))
 
         # Get files from url, cache, or disk depending on the case
         try:
@@ -348,17 +350,18 @@ class PreTrainedTokenizer(object):
                     resolved_vocab_files[file_id] = None
                 else:
                     resolved_vocab_files[file_id] = cached_path(file_path, cache_dir=cache_dir, force_download=force_download, proxies=proxies)
-        except EnvironmentError as e:
+        except EnvironmentError:
             if pretrained_model_name_or_path in s3_models:
-                logger.error("Couldn't reach server to download vocabulary.")
+                msg = "Couldn't reach server at '{}' to download vocabulary files."
             else:
-                logger.error(
-                    "Model name '{}' was not found in model name list ({}). "
-                    "We assumed '{}' was a path or url but couldn't find files {} "
-                    "at this path or url.".format(
+                msg = "Model name '{}' was not found in tokenizers model name list ({}). " \
+                    "We assumed '{}' was a path or url to a directory containing vocabulary files " \
+                    "named {}, but couldn't find such vocabulary files at this path or url.".format(
                         pretrained_model_name_or_path, ', '.join(s3_models),
-                        pretrained_model_name_or_path, str(vocab_files.keys())))
-            raise e
+                        pretrained_model_name_or_path,
+                        list(cls.vocab_files_names.values()))
+
+            raise EnvironmentError(msg)
 
         for file_id, file_path in vocab_files.items():
             if file_path == resolved_vocab_files[file_id]:
@@ -425,9 +428,9 @@ class PreTrainedTokenizer(object):
                 - tokenizer instantiation positional and keywords inputs (e.g. do_lower_case for Bert).
 
             This won't save modifications other than (added tokens and special token mapping) you may have
-            applied to the tokenizer after the instantion (e.g. modifying tokenizer.do_lower_case after creation).
+            applied to the tokenizer after the instantiation (e.g. modifying tokenizer.do_lower_case after creation).
 
-            This method make sure the full tokenizer can then be re-loaded using the :func:`~pytorch_transformers.PreTrainedTokenizer.from_pretrained` class method.
+            This method make sure the full tokenizer can then be re-loaded using the :func:`~transformers.PreTrainedTokenizer.from_pretrained` class method.
         """
         if not os.path.isdir(save_directory):
             logger.error("Saving directory ({}) should be a directory".format(save_directory))
@@ -464,7 +467,7 @@ class PreTrainedTokenizer(object):
         """ Save the tokenizer vocabulary to a directory. This method does *NOT* save added tokens
             and special token mappings.
 
-            Please use :func:`~pytorch_transformers.PreTrainedTokenizer.save_pretrained` `()` to save the full Tokenizer state if you want to reload it using the :func:`~pytorch_transformers.PreTrainedTokenizer.from_pretrained` class method.
+            Please use :func:`~transformers.PreTrainedTokenizer.save_pretrained` `()` to save the full Tokenizer state if you want to reload it using the :func:`~transformers.PreTrainedTokenizer.from_pretrained` class method.
         """
         raise NotImplementedError
 
@@ -507,7 +510,8 @@ class PreTrainedTokenizer(object):
         for token in new_tokens:
             assert isinstance(token, str) or (six.PY2 and isinstance(token, unicode))
             if token != self.unk_token and \
-                    self.convert_tokens_to_ids(token) == self.convert_tokens_to_ids(self.unk_token):
+                    self.convert_tokens_to_ids(token) == self.convert_tokens_to_ids(self.unk_token) and \
+                    token not in to_add_tokens:
                 to_add_tokens.append(token)
                 logger.info("Adding %s to the vocabulary", token)
 
@@ -518,6 +522,24 @@ class PreTrainedTokenizer(object):
 
         return len(to_add_tokens)
 
+    def num_added_tokens(self, pair=False):
+        """
+        Returns the number of added tokens when encoding a sequence with special tokens.
+
+        Note:
+            This encodes inputs and checks the number of added tokens, and is therefore not efficient. Do not put this
+            inside your training loop.
+
+        Args:
+            pair: Returns the number of added tokens in the case of a sequence pair if set to True, returns the
+                number of added tokens in the case of a single sequence if set to False.
+
+        Returns:
+            Number of tokens added to sequences
+        """
+        token_ids_0 = []
+        token_ids_1 = []
+        return len(self.build_inputs_with_special_tokens(token_ids_0, token_ids_1 if pair else None))
 
     def add_special_tokens(self, special_tokens_dict):
         """
@@ -655,6 +677,7 @@ class PreTrainedTokenizer(object):
     def _convert_token_to_id_with_added_voc(self, token):
         if token is None:
             return None
+
         if token in self.added_tokens_encoder:
             return self.added_tokens_encoder[token]
         return self._convert_token_to_id(token)
@@ -662,40 +685,272 @@ class PreTrainedTokenizer(object):
     def _convert_token_to_id(self, token):
         raise NotImplementedError
 
-    def encode(self, text, text_pair=None, add_special_tokens=False, **kwargs):
+    def encode(self,
+                text,
+                text_pair=None,
+                add_special_tokens=False,
+                max_length=None,
+                stride=0,
+                truncation_strategy='longest_first',
+                return_tensors=None,
+                **kwargs):
         """
         Converts a string in a sequence of ids (integer), using the tokenizer and vocabulary.
-        
+
         Same as doing ``self.convert_tokens_to_ids(self.tokenize(text))``.
 
         Args:
-            text: The first sequence to be encoded.
-            text_pair: Optional second sequence to be encoded.
+            text: The first sequence to be encoded. This can be a string, a list of strings (tokenized string using
+                the `tokenize` method) or a list of integers (tokenized string ids using the `convert_tokens_to_ids`
+                method)
+            text_pair: Optional second sequence to be encoded. This can be a string, a list of strings (tokenized
+                string using the `tokenize` method) or a list of integers (tokenized string ids using the
+                `convert_tokens_to_ids` method)
             add_special_tokens: if set to ``True``, the sequences will be encoded with the special tokens relative
                 to their model.
+            max_length: if set to a number, will limit the total sequence returned so that it has a maximum length.
+                If there are overflowing tokens, those will be added to the returned dictionary
+            stride: if set to a number along with max_length, the overflowing tokens returned will contain some tokens
+                from the main sequence returned. The value of this argument defines the number of additional tokens.
+            truncation_strategy: string selected in the following options:
+                - 'longest_first' (default) Iteratively reduce the inputs sequence until the input is under max_length
+                    starting from the longest one at each token (when there is a pair of input sequences)
+                - 'only_first': Only truncate the first sequence
+                - 'only_second': Only truncate the second sequence
+                - 'do_not_truncate': Does not truncate (raise an error if the input sequence is longer than max_length)
+            return_tensors: (optional) can be set to 'tf' or 'pt' to return respectively TensorFlow tf.constant
+                or PyTorch torch.Tensor instead of a list of python integers.
             **kwargs: passed to the `self.tokenize()` method
         """
-        if text_pair is None:
-            if add_special_tokens:
-                return self.add_special_tokens_single_sentence(self.convert_tokens_to_ids(self.tokenize(text, **kwargs)))
-            else:
-                return self.convert_tokens_to_ids(self.tokenize(text, **kwargs))
+        encoded_inputs = self.encode_plus(text,
+                                          text_pair=text_pair,
+                                          max_length=max_length,
+                                          add_special_tokens=add_special_tokens,
+                                          stride=stride,
+                                          truncation_strategy=truncation_strategy,
+                                          return_tensors=return_tensors,
+                                          **kwargs)
 
-        first_sentence_tokens = [self._convert_token_to_id(token) for token in self.tokenize(text, **kwargs)]
-        second_sentence_tokens = [self._convert_token_to_id(token) for token in self.tokenize(text_pair, **kwargs)]
+        return encoded_inputs["input_ids"]
+
+    def encode_plus(self,
+                    text,
+                    text_pair=None,
+                    add_special_tokens=False,
+                    max_length=None,
+                    stride=0,
+                    truncation_strategy='longest_first',
+                    return_tensors=None,
+                    **kwargs):
+        """
+        Returns a dictionary containing the encoded sequence or sequence pair and additional informations:
+        the mask for sequence classification and the overflowing elements if a ``max_length`` is specified.
+
+        Args:
+            text: The first sequence to be encoded. This can be a string, a list of strings (tokenized string using
+                the `tokenize` method) or a list of integers (tokenized string ids using the `convert_tokens_to_ids`
+                method)
+            text_pair: Optional second sequence to be encoded. This can be a string, a list of strings (tokenized
+                string using the `tokenize` method) or a list of integers (tokenized string ids using the
+                `convert_tokens_to_ids` method)
+            add_special_tokens: if set to ``True``, the sequences will be encoded with the special tokens relative
+                to their model.
+            max_length: if set to a number, will limit the total sequence returned so that it has a maximum length.
+                If there are overflowing tokens, those will be added to the returned dictionary
+            stride: if set to a number along with max_length, the overflowing tokens returned will contain some tokens
+                from the main sequence returned. The value of this argument defines the number of additional tokens.
+            truncation_strategy: string selected in the following options:
+                - 'longest_first' (default) Iteratively reduce the inputs sequence until the input is under max_length
+                    starting from the longest one at each token (when there is a pair of input sequences)
+                - 'only_first': Only truncate the first sequence
+                - 'only_second': Only truncate the second sequence
+                - 'do_not_truncate': Does not truncate (raise an error if the input sequence is longer than max_length)
+            return_tensors: (optional) can be set to 'tf' or 'pt' to return respectively TensorFlow tf.constant
+                or PyTorch torch.Tensor instead of a list of python integers.
+            **kwargs: passed to the `self.tokenize()` method
+        """
+
+        def get_input_ids(text):
+            if isinstance(text, six.string_types):
+                return self.convert_tokens_to_ids(self.tokenize(text, **kwargs))
+            elif isinstance(text, (list, tuple)) and len(text) > 0 and isinstance(text[0], six.string_types):
+                return self.convert_tokens_to_ids(text)
+            elif isinstance(text, (list, tuple)) and len(text) > 0 and isinstance(text[0], int):
+                return text
+            else:
+                raise ValueError("Input is not valid. Should be a string, a list/tuple of strings or a list/tuple of integers.")
+
+        first_ids = get_input_ids(text)
+        second_ids = get_input_ids(text_pair) if text_pair is not None else None
+
+        return self.prepare_for_model(first_ids,
+                                      pair_ids=second_ids,
+                                      max_length=max_length,
+                                      add_special_tokens=add_special_tokens,
+                                      stride=stride,
+                                      truncation_strategy=truncation_strategy,
+                                      return_tensors=return_tensors)
+
+    def prepare_for_model(self, ids, pair_ids=None, max_length=None, add_special_tokens=False, stride=0,
+                          truncation_strategy='longest_first', return_tensors=None):
+        """
+        Prepares a sequence of input id, or a pair of sequences of inputs ids so that it can be used by the model.
+        It adds special tokens, truncates
+        sequences if overflowing while taking into account the special tokens and manages a window stride for
+        overflowing tokens
+
+        Args:
+            ids: list of tokenized input ids. Can be obtained from a string by chaining the
+                `tokenize` and `convert_tokens_to_ids` methods.
+            pair_ids: Optional second list of input ids. Can be obtained from a string by chaining the
+                `tokenize` and `convert_tokens_to_ids` methods.
+            max_length: maximum length of the returned list. Will truncate by taking into account the special tokens.
+            add_special_tokens: if set to ``True``, the sequences will be encoded with the special tokens relative
+                to their model.
+            stride: window stride for overflowing tokens. Can be useful for edge effect removal when using sequential
+                list of inputs.
+            truncation_strategy: string selected in the following options:
+                - 'longest_first' (default) Iteratively reduce the inputs sequence until the input is under max_length
+                    starting from the longest one at each token (when there is a pair of input sequences)
+                - 'only_first': Only truncate the first sequence
+                - 'only_second': Only truncate the second sequence
+                - 'do_not_truncate': Does not truncate (raise an error if the input sequence is longer than max_length)
+            return_tensors: (optional) can be set to 'tf' or 'pt' to return respectively TensorFlow tf.constant
+                or PyTorch torch.Tensor instead of a list of python integers.
+
+        Return:
+            A Dictionary of shape::
+
+                {
+                    input_ids: list[int],
+                    overflowing_tokens: list[int] if a ``max_length`` is specified, else None
+                    special_tokens_mask: list[int] if ``add_special_tokens`` if set to ``True``
+                }
+
+            With the fields:
+                ``input_ids``: list of tokens to be fed to a model
+
+                ``overflowing_tokens``: list of overflowing tokens if a max length is specified.
+
+                ``special_tokens_mask``: if adding special tokens, this is a list of [0, 1], with 0 specifying special added
+                tokens and 1 specifying sequence tokens.
+        """
+        pair = bool(pair_ids is not None)
+        len_ids = len(ids)
+        len_pair_ids = len(pair_ids) if pair else 0
+
+        encoded_inputs = {}
+        total_len = len_ids + len_pair_ids + (self.num_added_tokens(pair=pair) if add_special_tokens else 0)
+        if max_length and total_len > max_length:
+            ids, pair_ids, overflowing_tokens = self.truncate_sequences(ids, pair_ids=pair_ids,
+                                                                        num_tokens_to_remove=total_len-max_length,
+                                                                        truncation_strategy=truncation_strategy,
+                                                                        stride=stride)
+            encoded_inputs["overflowing_tokens"] = overflowing_tokens
+            encoded_inputs["num_truncated_tokens"] = total_len - max_length
 
         if add_special_tokens:
-            return self.add_special_tokens_sentences_pair(first_sentence_tokens, second_sentence_tokens)
+            sequence = self.build_inputs_with_special_tokens(ids, pair_ids)
+            token_type_ids = self.create_token_type_ids_from_sequences(ids, pair_ids)
+            encoded_inputs["special_tokens_mask"] = self.get_special_tokens_mask(ids, pair_ids)
         else:
-            return first_sentence_tokens, second_sentence_tokens
+            sequence = ids + pair_ids if pair else ids
+            token_type_ids = [0] * len(ids) + ([1] * len(pair_ids) if pair else [])
 
-    def add_special_tokens_single_sentence(self, token_ids):
-        logger.warning("This tokenizer does not make use of special tokens. The sequence has been returned with no modification.")
-        return token_ids
+        if return_tensors == 'tf' and is_tf_available():
+            sequence = tf.constant([sequence])
+            token_type_ids = tf.constant([token_type_ids])
+        elif return_tensors == 'pt' and is_torch_available():
+            sequence = torch.tensor([sequence])
+            token_type_ids = torch.tensor([token_type_ids])
+        elif return_tensors is not None:
+            logger.warning("Unable to convert output to tensors format {}, PyTorch or TensorFlow is not available.".format(return_tensors))
 
-    def add_special_tokens_sentences_pair(self, token_ids_0, token_ids_1):
-        logger.warning("This tokenizer does not make use of special tokens. The two sequences have been concatenated.")
+        encoded_inputs["input_ids"] = sequence
+        encoded_inputs["token_type_ids"] = token_type_ids
+
+        if max_length and len(encoded_inputs["input_ids"]) > max_length:
+            encoded_inputs["input_ids"] = encoded_inputs["input_ids"][:max_length]
+            encoded_inputs["token_type_ids"] = encoded_inputs["token_type_ids"][:max_length]
+            encoded_inputs["special_tokens_mask"] = encoded_inputs["special_tokens_mask"][:max_length]
+
+        return encoded_inputs
+
+    def truncate_sequences(self, ids, pair_ids=None, num_tokens_to_remove=0, truncation_strategy='longest_first', stride=0):
+        """Truncates a sequence pair in place to the maximum length.
+            truncation_strategy: string selected in the following options:
+                - 'longest_first' (default) Iteratively reduce the inputs sequence until the input is under max_length
+                    starting from the longest one at each token (when there is a pair of input sequences).
+                    Overflowing tokens only contains overflow from the first sequence.
+                - 'only_first': Only truncate the first sequence. raise an error if the first sequence is shorter or equal to than num_tokens_to_remove.
+                - 'only_second': Only truncate the second sequence
+                - 'do_not_truncate': Does not truncate (raise an error if the input sequence is longer than max_length)
+        """
+        if num_tokens_to_remove <= 0:
+            return ids, pair_ids, []
+
+        if truncation_strategy == 'longest_first':
+            overflowing_tokens = []
+            for _ in range(num_tokens_to_remove):
+                if pair_ids is None or len(ids) > len(pair_ids):
+                    overflowing_tokens = [ids[-1]] + overflowing_tokens
+                    ids = ids[:-1]
+                else:
+                    pair_ids = pair_ids[:-1]
+            window_len = min(len(ids), stride)
+            if window_len > 0:
+                overflowing_tokens = ids[-window_len:] + overflowing_tokens
+        elif truncation_strategy == 'only_first':
+            assert len(ids) > num_tokens_to_remove
+            window_len = min(len(ids), stride + num_tokens_to_remove)
+            overflowing_tokens = ids[-window_len:]
+            ids = ids[:-num_tokens_to_remove]
+        elif truncation_strategy == 'only_second':
+            assert pair_ids is not None and len(pair_ids) > num_tokens_to_remove
+            window_len = min(len(pair_ids), stride + num_tokens_to_remove)
+            overflowing_tokens = pair_ids[-window_len:]
+            pair_ids = pair_ids[:-num_tokens_to_remove]
+        elif truncation_strategy == 'do_not_truncate':
+            raise ValueError("Input sequence are too long for max_length. Please select a truncation strategy.")
+        else:
+            raise ValueError("Truncation_strategy should be selected in ['longest_first', 'only_first', 'only_second', 'do_not_truncate']")
+        return (ids, pair_ids, overflowing_tokens)
+
+    def create_token_type_ids_from_sequences(self, token_ids_0, token_ids_1=None):
+        logger.warning("This tokenizer does not make use of special tokens.")
+        if token_ids_1 is None:
+            return len(token_ids_0) * [0]
+        return [0] * len(token_ids_0) + [1] * len(token_ids_1)
+
+    def build_inputs_with_special_tokens(self, token_ids_0, token_ids_1=None):
+        """
+        Build model inputs from a sequence or a pair of sequence for sequence classification tasks
+        by concatenating and adding special tokens.
+        A RoBERTa sequence has the following format:
+            single sequence: <s> X </s>
+            pair of sequences: <s> A </s></s> B </s>
+        """
+        logger.warning("This tokenizer does not make use of special tokens. Input is returned with no modification.")
+        if token_ids_1 is None:
+            return token_ids_0
         return token_ids_0 + token_ids_1
+
+    def get_special_tokens_mask(self, token_ids_0, token_ids_1=None, already_has_special_tokens=False):
+        """
+        Retrieves sequence ids from a token list that has no special tokens added. This method is called when adding
+        special tokens using the tokenizer ``prepare_for_model`` or ``encode_plus`` methods.
+
+        Args:
+            token_ids_0: list of ids (must not contain special tokens)
+            token_ids_1: Optional list of ids (must not contain special tokens), necessary when fetching sequence ids
+                for sequence pairs
+            already_has_special_tokens: (default False) Set to True if the token list is already formated with
+                special tokens for the model
+
+        Returns:
+            A list of integers in the range [0, 1]: 0 for a special token, 1 for a sequence token.
+        """
+        return [0] * ((len(token_ids_1) if token_ids_1 else 0) + len(token_ids_0))
 
     def convert_ids_to_tokens(self, ids, skip_special_tokens=False):
         """ Converts a single index or a sequence of indices (integers) in a token "
@@ -734,12 +989,17 @@ class PreTrainedTokenizer(object):
         Converts a sequence of ids (integer) in a string, using the tokenizer and vocabulary
         with options to remove special tokens and clean up tokenization spaces.
         Similar to doing ``self.convert_tokens_to_string(self.convert_ids_to_tokens(token_ids))``.
+
+        Args:
+            token_ids: list of tokenized input ids. Can be obtained using the `encode` or `encode_plus` methods.
+            skip_special_tokens: if set to True, will replace special tokens.
+            clean_up_tokenization_spaces: if set to True, will clean up the tokenization spaces.
         """
         filtered_tokens = self.convert_ids_to_tokens(token_ids, skip_special_tokens=skip_special_tokens)
 
         # To avoid mixing byte-level and unicode for byte-level BPT
         # we need to build string separatly for added tokens and byte-level tokens
-        # cf. https://github.com/huggingface/pytorch-transformers/issues/1133
+        # cf. https://github.com/huggingface/transformers/issues/1133
         sub_texts = []
         current_sub_text = []
         for token in filtered_tokens:
@@ -756,20 +1016,11 @@ class PreTrainedTokenizer(object):
             sub_texts.append(self.convert_tokens_to_string(current_sub_text))
         text = ''.join(sub_texts)
 
-        if self._sep_token is not None and self._sep_token in text:
-            text = text.replace(self._cls_token, self._sep_token)
-            split_text = list(filter(lambda sentence: len(sentence) > 0, text.split(self._sep_token)))
-            if clean_up_tokenization_spaces:
-                clean_text = [self.clean_up_tokenization(text) for text in split_text]
-                return clean_text
-            else:
-                return split_text
+        if clean_up_tokenization_spaces:
+            clean_text = self.clean_up_tokenization(text)
+            return clean_text
         else:
-            if clean_up_tokenization_spaces:
-                clean_text = self.clean_up_tokenization(text)
-                return clean_text
-            else:
-                return text
+            return text
 
     @property
     def special_tokens_map(self):

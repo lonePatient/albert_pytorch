@@ -2,16 +2,14 @@ import os
 import json
 import random
 import collections
-from configs.base import config
-from common.tools import logger, init_logger
+from tools.common import logger, init_logger
 from argparse import ArgumentParser
-from common.tools import seed_everything
+from tools.common import seed_everything
 from model.tokenization_bert import BertTokenizer
 from callback.progressbar import ProgressBar
+from pathlib import Path
 
 MaskedLmInstance = collections.namedtuple("MaskedLmInstance", ["index", "label"])
-init_logger(log_file=config['log_dir'] / ("pregenerate_training_data.log"))
-
 
 def truncate_seq_pair(tokens_a, tokens_b, max_num_tokens):
     """Truncates a pair of sequences to a maximum sequence length."""
@@ -155,14 +153,12 @@ def create_masked_lm_predictions(tokens, masked_lm_prob, max_predictions_per_seq
             # 10% of the time, replace with random word
             else:
                 masked_token = random.choice(vocab_list)
-            masked_token_labels.append(MaskedLmInstance(index=index, label=tokens[index]))
-            tokens[index] = masked_token
+        masked_token_labels.append(MaskedLmInstance(index=index, label=tokens[index]))
+        tokens[index] = masked_token
+    assert len(masked_token_labels) <= num_to_mask
     masked_token_labels = sorted(masked_token_labels, key=lambda x: x.index)
-    mask_indices = []
-    masked_labels = []
-    for p in masked_token_labels:
-        mask_indices.append(p.index)
-        masked_labels.append(p.label)
+    mask_indices = [p.index for p in masked_token_labels]
+    masked_labels = [p.label for p in masked_token_labels]
     return tokens, mask_indices, masked_labels
 
 
@@ -220,6 +216,11 @@ def create_training_instances(input_file, tokenizer, max_seq_len, short_seq_prob
 
 def main():
     parser = ArgumentParser()
+    ## Required parameters
+    parser.add_argument("--data_dir", default=None, type=str, required=True)
+    parser.add_argument("--vocab_path", default=None, type=str, required=True)
+    parser.add_argument("--output_dir", default=None, type=str, required=True)
+
     parser.add_argument('--data_name', default='albert', type=str)
     parser.add_argument("--do_data", default=False, action='store_true')
     parser.add_argument("--do_split", default=False, action='store_true')
@@ -233,28 +234,33 @@ def main():
                         help="Probability of making a short sentence as a training example")
     parser.add_argument("--masked_lm_prob", type=float, default=0.15,
                         help="Probability of masking each token for the LM task")
-    parser.add_argument("--max_predictions_per_seq", type=int, default=20,
+    parser.add_argument("--max_predictions_per_seq", type=int, default=20,  # 128 * 0.15
                         help="Maximum number of tokens to mask in each sequence")
     args = parser.parse_args()
     seed_everything(args.seed)
+    args.data_dir = Path(args.data_dir)
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
+    init_logger(log_file=args.output_dir +"pregenerate_training_data.log")
     logger.info("pregenerate training data parameters:\n %s", args)
-    tokenizer = BertTokenizer(vocab_file=config['data_dir'] / 'vocab.txt', do_lower_case=args.do_lower_case)
+    tokenizer = BertTokenizer(vocab_file=args.vocab_path, do_lower_case=args.do_lower_case)
 
+    # split big file
     if args.do_split:
-        corpus_path = config['data_dir'] / "corpus/corpus.txt"
-        split_save_path = config['data_dir'] / "corpus/train"
+        corpus_path = args.data_dir / "corpus/corpus.txt"
+        split_save_path = args.data_dir / "/corpus/train"
         if not split_save_path.exists():
             split_save_path.mkdir(exist_ok=True)
         line_per_file = args.line_per_file
         command = f'split -a 4 -l {line_per_file} -d {corpus_path} {split_save_path}/shard_'
         os.system(f"{command}")
 
+    # generator train data
     if args.do_data:
-        data_path = config['data_dir'] / "corpus/train"
-        files = sorted([f for f in config['data_dir'].iterdir() if f.exists() and '.txt' in str(f)])
-
+        data_path = args.data_dir / "corpus/train"
+        files = sorted([f for f in data_path.parent.iterdir() if f.exists() and '.txt' in str(f)])
         for idx in range(args.file_num):
-            logger.info(f"pregenetate file_{idx}.json")
+            logger.info(f"pregenetate {args.data_name}_file_{idx}.json")
             save_filename = data_path / f"{args.data_name}_file_{idx}.json"
             num_instances = 0
             with save_filename.open('w') as fw:
@@ -282,3 +288,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+'''
+
+'''

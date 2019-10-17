@@ -1,4 +1,4 @@
-## albert_zh_pytorch
+# albert_zh_pytorch
 
 This repository contains a PyTorch implementation of the albert model from the paper 
 
@@ -8,19 +8,24 @@ by Zhenzhong Lan. Mingda Chen....
 
 arxiv: https://arxiv.org/pdf/1909.11942.pdf
 
+**说明**: 
+
+* 本代码在[huggingface](https://github.com/huggingface/transformers)代码基础上适配[brightmart](https://github.com/brightmart/albert_zh)提供的中文模型权重，当然也可以基于此代码进行训练albert.
+
+* 如果只想加载和转换预训练模型，可以参考[chineseGLUE](https://github.com/lonePatient/chineseGLUE_pytorch)，该版本比较简洁。
+
 ## Pre-LN and Post-LN
 
 * Post-LN: . 在原始的Transformer中，Layer Norm在跟在Residual之后的，我们把这个称为`Post-LN Transformer`
 
 * Pre-LN: 把Layer Norm换个位置，比如放在Residual的过程之中（称为`Pre-LN Transformer`）
 
-![](https://lonepatient-1257945978.cos.ap-chengdu.myqcloud.com/Selection_001.png)
-
+<p align="center"><img width="200" src="https://lonepatient-1257945978.cos.ap-chengdu.myqcloud.com/Selection_001.png" /></p>
 paper: [On Layer Normalization in the Transformer Architecture](https://openreview.net/forum?id=B1x8anVFPr)
 
 **使用方式**
 
-按照][brightmart](https://github.com/brightmart/albert_zh)大佬提供的模型权重文件，需要在配置文件中添加`ln_type`参数，如下：
+按照[brightmart](https://github.com/brightmart/albert_zh)大佬提供的模型权重文件，需要在配置文件中添加`ln_type`参数，如下：
 
 ```json
 {
@@ -42,10 +47,10 @@ paper: [On Layer Normalization in the Transformer Architecture](https://openrevi
   "pooler_type": "first_token_transform", 
   "type_vocab_size": 2, 
   "vocab_size": 21128,
-   "ln_type":"postln"  # postln or preln
+   "ln_type":"postln"  /**postln or preln**/
 }
 ```
-## show type 
+## share type 
 
 **Cross-Layer Parameter Sharing**: ALBERT use cross-layer parameter sharing in Attention and FFN(FeedForward Network) to reduce number of parameter.
 
@@ -63,15 +68,11 @@ modify the `share_type` parameter:
 ```python
 config = BertConfig.from_pretrained(bert_config_file,share_type=share_type)
 ```
+如果你是加载预训练模型权重，`share_type=all`.
+
 ## Download Pre-trained Models of Chinese
 
-感谢brightmart大佬提供中文模型权重：[github](https://github.com/brightmart/albert_zh)
-
-1. [albert_large_zh](https://storage.googleapis.com/albert_zh/albert_large_zh.zip) 参数量，层数24，大小为64M
-
-2. [albert_base_zh(小模型体验版)](https://storage.googleapis.com/albert_zh/albert_base_zh.zip), 参数量12M, 层数12，大小为40M
-
-3. [albert_xlarge_zh](https://storage.googleapis.com/albert_zh/albert_xlarge_zh.zip) 参数量，层数24，文件大小为230M
+感谢brightmart大佬提供中文模型权重：[下载地址](https://github.com/brightmart/albert_zh)
 
 ## 预训练
 
@@ -80,13 +81,33 @@ config = BertConfig.from_pretrained(bert_config_file,share_type=share_type)
    <p align="center"><img width="200" src="https://lonepatient-1257945978.cos.ap-chengdu.myqcloud.com/n-gram.png" /></p>
 １．将文本数据转化为一行一句格式，并且不同document之间使用`\n`分割
 
-２．运行`python prepare_lm_data_ngram.py --do_data`分别生成ngram mask格式数据集
+２. 运行以下命令：
+```python
+python prepare_lm_data_ngram.py \
+    --data_dir=dataset/ \
+    --vocab_path=vocab.txt \
+    --data_name=albert \
+    --max_ngram=3 \
+    --do_data
+```
+产生n-gram masking数据集，**具体可根据对应数据进行修改代码**
 
-３．运行`python run_pretraining.py --share_type=all`进行模型预训练
+３．运行以下命令：
+```python
+python run_pretraining.py \
+    --data_dir=dataset/ \
+    --vocab_path=configs/vocab.txt \
+    --data_name=albert \
+    --config_path=configs/albert_config_base.json \
+    --output_dir=outputs/ \
+    --data_name=albert \
+    --share_type=all
+```
+进行模型训练，**具体可根据对应数据进行修改代码**
 
-** 模型大小**
+**模型大小**
 
-以下是对`bert-base`进行实验的结果
+以下是对`albert-base`进行实验的结果
 
 | embedding_size | share_type | model_size |
 | :------- | :---------: | :---------: |
@@ -103,15 +124,30 @@ config = BertConfig.from_pretrained(bert_config_file,share_type=share_type)
 
 ## 下游任务Fine-tuning
 
-１．下载预训练的albert模型
+１．下载tf版本预训练的albert模型
 
-２．运行`python convert_albert_tf_checkpoint_to_pytorch.py`将TF模型权重转化为pytorch模型权重(默认情况下shar_type=all)
+２．运行以下命令:
+```python
+python convert_albert_tf_checkpoint_to_pytorch.py \
+    --tf_checkpoint_path=./prev_trained_model/albert_tiny_tf \ #tf模型目录
+    --bert_config_file=./prev_trained_model/albert_tiny_tf/albert_config_tiny.json \ # 配置文件路径
+    --pytorch_dump_path=./prev_trained_model/albert_tiny/pytorch_model.bin # 转换模型保存路径
+```
+将TF模型权重转化为pytorch模型权重(默认情况下shar_type=all)。
+
+**注意**，如果需要运行该classifier.py脚本，需要将配置文件和vocab.txt文件同时放入上面转换模型的目录中，比如:
+
+```text
+├── prev_trained_model
+|  └── albert_base
+|  |  └── pytorch_model.bin
+|  |  └── config.json
+|  |  └── vocab.txt
+```
 
 ３．下载对应的数据集，比如[LCQMC](https://drive.google.com/open?id=1HXYMqsXjmA5uIfu_SFqP7r_vZZG-m_H0)数据集，包含训练、验证和测试集，训练集包含24万口语化描述的中文句子对，标签为1或0。1为句子语义相似，0为语义不相似。
 
-４．运行`python run_classifier.py --do_train`进行Fine-tuning训练
-
-5.　运行`python run_classifier.py --do_test`进行test评估
+４．运行`sh run_classifier_lcqmc.sh`进行Fine-tuning训练
 
 ## 结果
 
@@ -119,8 +155,9 @@ config = BertConfig.from_pretrained(bert_config_file,share_type=share_type)
 
 | 模型 | 开发集(Dev) | 测试集(Test) |
 | :------- | :---------: | :---------: |
-| ALBERT-zh-base(tf) | 86.4 | 86.3 |
-| ALBERT-zh-base(pytorch) | 87.4 | 86.4 |
+| albert_base(tf) | 86.4 | 86.3 |
+| albert_base(pytorch) | 87.4 | 86.4 |
+| albert_tiny | 85.１ | 85.3 |
 
 
 

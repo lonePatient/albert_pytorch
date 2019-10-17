@@ -1,7 +1,7 @@
 from pathlib import Path
 import numpy as np
 import torch
-from ..common.tools import logger
+from ..tools.common import logger
 
 class ModelCheckpoint(object):
     '''

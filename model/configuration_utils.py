@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class PretrainedConfig(object):
     r""" Base class for all configuration classes.
-        Handles a few parameters common to all models' configurations as well as methods for loading/downloading/saving configurations.
+        Handles a few parameters tools to all models' configurations as well as methods for loading/downloading/saving configurations.
 
         Note:
             A configuration file can be loaded and saved to disk. Loading the configuration file and using this file to initialize a model does **not** load the model weights.
