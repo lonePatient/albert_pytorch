@@ -11,8 +11,8 @@ arxiv: https://arxiv.org/pdf/1909.11942.pdf
 **说明**: 
 
 * 本代码在[huggingface](https://github.com/huggingface/transformers)代码基础上适配[brightmart](https://github.com/brightmart/albert_zh)提供的中文模型权重，当然也可以基于此代码进行训练albert.
-
 * 如果只想加载和转换预训练模型，可以参考[chineseGLUE](https://github.com/lonePatient/chineseGLUE_pytorch)，该版本比较简洁。
+* **pytorch**版本为1.1.0 ，cuda版本为9.0 
 
 ## Pre-LN and Post-LN
 
