@@ -46,7 +46,6 @@ MODEL_CLASSES = {
     'albert': (BertConfig, AlbertForSequenceClassification, BertTokenizer)
 }
 
-
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)

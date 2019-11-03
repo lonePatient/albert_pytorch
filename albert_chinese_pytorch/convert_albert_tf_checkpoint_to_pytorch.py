@@ -24,6 +24,7 @@ import torch
 from model.modeling_albert import BertConfig, AlbertForPreTraining, load_tf_weights_in_albert
 
 import logging
+
 logging.basicConfig(level=logging.INFO)
 
 def convert_tf_checkpoint_to_pytorch(tf_checkpoint_path, bert_config_file,share_type, pytorch_dump_path):

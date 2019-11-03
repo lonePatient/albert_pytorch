@@ -10,6 +10,7 @@ from pathlib import Path
 import logging
 
 logger = logging.getLogger()
+
 def init_logger(log_file=None, log_file_level=logging.NOTSET):
     '''
     Example:

@@ -23,7 +23,6 @@ class InputExample(object):
         self.text_b = text_b
         self.label = label
 
-
 class InputFeature(object):
     '''
     A single set of features of data.

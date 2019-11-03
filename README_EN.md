@@ -16,7 +16,7 @@ arxiv: https://arxiv.org/pdf/1909.11942.pdf
 - scikit-learn
 - sentencepiece
 
-### Download Pre-trained Models of English
+## Download Pre-trained Models of English
 
 Version 2 of ALBERT models is relased. TF-Hub modules are available:
 

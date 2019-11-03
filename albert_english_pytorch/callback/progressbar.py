@@ -1,5 +1,4 @@
 import time
-
 class ProgressBar(object):
     '''
     custom progress bar

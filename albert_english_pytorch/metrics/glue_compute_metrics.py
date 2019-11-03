@@ -19,7 +19,6 @@ import sys
 import logging
 
 logger = logging.getLogger(__name__)
-
 try:
     from scipy.stats import pearsonr, spearmanr
     from sklearn.metrics import matthews_corrcoef, f1_score

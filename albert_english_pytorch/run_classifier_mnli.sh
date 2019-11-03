@@ -20,4 +20,5 @@ python run_classifier.py \
   --logging_steps=24544 \
   --save_steps=24544 \
   --output_dir=$OUTPUR_DIR/${TASK_NAME}_output/ \
-  --overwrite_output_dir
+  --overwrite_output_dir \
+  --seed=42

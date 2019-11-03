@@ -22,7 +22,6 @@ from .utils import DataProcessor, InputExample, InputFeatures
 
 logger = logging.getLogger(__name__)
 
-
 def collate_fn(batch):
     """
     batch should be a list of (sequence, target, length) tuples...

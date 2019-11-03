@@ -26,7 +26,6 @@ def truncate_seq_pair(tokens_a, tokens_b, max_num_tokens):
         else:
             trunc_tokens.pop()
 
-
 def create_instances_from_document(all_documents, document_index, max_seq_length, short_seq_prob,
                                    masked_lm_prob, max_predictions_per_seq, vocab_words):
     """Creates `TrainingInstance`s for a single document.

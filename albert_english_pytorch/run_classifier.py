@@ -34,7 +34,6 @@ from callback.optimizater import Lamb
 
 from metrics.glue_compute_metrics import compute_metrics
 from processors import glue_output_modes as output_modes
-
 from processors import glue_processors as processors
 from processors import glue_convert_examples_to_features as convert_examples_to_features
 from processors import collate_fn

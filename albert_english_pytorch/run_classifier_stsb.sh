@@ -7,8 +7,8 @@ python run_classifier.py \
   --model_type=albert \
   --model_name_or_path=$BERT_BASE_DIR \
   --task_name=$TASK_NAME \
-  --do_train \
   --do_eval \
+  --do_train \
   --do_lower_case \
   --data_dir=$DATA_DIR/${TASK_NAME}/ \
   --max_seq_length=128 \

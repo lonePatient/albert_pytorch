@@ -23,7 +23,6 @@ __call__ = ['SGDW',
             'Ranger',
             'BertAdam'
             ]
-
 class SGDW(Optimizer):
     r"""Implements stochastic gradient descent (optionally with momentum) with
     weight decay from the paper `Fixing Weight Decay Regularization in Adam`_.

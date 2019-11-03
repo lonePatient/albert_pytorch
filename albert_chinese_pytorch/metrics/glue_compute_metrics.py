@@ -17,7 +17,6 @@
 import csv
 import sys
 import logging
-
 logger = logging.getLogger(__name__)
 
 try:

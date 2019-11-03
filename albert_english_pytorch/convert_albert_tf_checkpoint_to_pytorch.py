@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import argparse
 import torch
-
 from model.modeling_albert import BertConfig, AlbertForPreTraining, load_tf_weights_in_albert
 
 import logging

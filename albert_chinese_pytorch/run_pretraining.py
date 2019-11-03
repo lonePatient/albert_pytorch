@@ -19,6 +19,7 @@ from model.optimization import AdamW, WarmupLinearSchedule
 from tools.common import seed_everything
 
 InputFeatures = namedtuple("InputFeatures", "input_ids input_mask segment_ids lm_label_ids is_next")
+
 def convert_example_to_features(example, tokenizer, max_seq_length):
     tokens = example["tokens"]
     segment_ids = example["segment_ids"]
