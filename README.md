@@ -1,4 +1,6 @@
-# albert_zh_pytorch
+[**中文版说明**](./README.md) | [**English Version**](./README_EN.md)
+
+## albert_pytorch
 
 This repository contains a PyTorch implementation of the albert model from the paper 
 
