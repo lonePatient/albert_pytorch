@@ -1,5 +1,5 @@
 CURRENT_DIR=`pwd`
-export BERT_BASE_DIR=$CURRENT_DIR/prev_trained_model/albert_xlarge_v2
+export BERT_BASE_DIR=$CURRENT_DIR/prev_trained_model/albert_base_v2
 export DATA_DIR=$CURRENT_DIR/dataset
 export OUTPUR_DIR=$CURRENT_DIR/outputs
 TASK_NAME="sst-2"
