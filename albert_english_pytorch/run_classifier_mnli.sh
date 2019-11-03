@@ -16,7 +16,7 @@ python run_classifier.py \
   --per_gpu_eval_batch_size=16 \
   --spm_model_file=${BERT_BASE_DIR}/30k-clean.model \
   --learning_rate=1e-5 \
-  --num_train_epochs=4.0 \
+  --num_train_epochs=3.0 \
   --logging_steps=24544 \
   --save_steps=24544 \
   --output_dir=$OUTPUR_DIR/${TASK_NAME}_output/ \
