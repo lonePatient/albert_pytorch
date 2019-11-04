@@ -25,6 +25,14 @@ Version 2 of ALBERT models is relased. TF-Hub modules are available:
 - https://tfhub.dev/google/albert_xlarge/2
 - https://tfhub.dev/google/albert_xxlarge/2
 
+
+
+or download pytorch model:
+
+- [albert_base_v2.zip](https://drive.google.com/open?id=1JRGQPaUb2DIwIfugOdopxdoezx040Qrz)
+- [albert_large_v2.zip](https://drive.google.com/file/d/1O6FUCQldNwoz5fP9sa6fDmlwauu8uzo8/view?usp=sharing)
+- [albert_xlarge_v2.zip](https://drive.google.com/open?id=1fFu98VfoLILpQeS4IeLQ9OZEB18HR8vK)
+
 ## Fine-tuning
 
 １．Download the Bert pretrained model from [TF-HUb](https://tfhub.dev/google/albert_base)
