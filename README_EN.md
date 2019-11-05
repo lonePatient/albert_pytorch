@@ -27,11 +27,17 @@ Version 2 of ALBERT models is relased. TF-Hub modules are available:
 
 
 
-or download pytorch model:
+or download pytorch model (google):
 
 - [albert_base_v2.zip](https://drive.google.com/open?id=1JRGQPaUb2DIwIfugOdopxdoezx040Qrz)
 - [albert_large_v2.zip](https://drive.google.com/file/d/1O6FUCQldNwoz5fP9sa6fDmlwauu8uzo8/view?usp=sharing)
 - [albert_xlarge_v2.zip](https://drive.google.com/open?id=1fFu98VfoLILpQeS4IeLQ9OZEB18HR8vK)
+
+baidu:
+
+- [albert_base_v2.zip](https://pan.baidu.com/s/1as97ay14pvCaa_8r2WzMSQ)
+- [albert_large_v2.zip](https://pan.baidu.com/s/1pdN4h7b8wgL131Zgpo_ohg)
+- [albert_xlarge_v2.zip](https://pan.baidu.com/s/1-XyOjI1GjjAxv_9IO14Xwg)
 
 ## Fine-tuning
 
