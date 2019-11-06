@@ -44,6 +44,7 @@ arxiv: https://arxiv.org/pdf/1909.11942.pdf
 * Pre-LN: 把Layer Norm换个位置，比如放在Residual的过程之中（称为`Pre-LN Transformer`）
 
 <p align="center"><img width="200" src="https://lonepatient-1257945978.cos.ap-chengdu.myqcloud.com/Selection_001.png" /></p>
+
 paper: [On Layer Normalization in the Transformer Architecture](https://openreview.net/forum?id=B1x8anVFPr)
 
 
