@@ -16,6 +16,25 @@ arxiv: https://arxiv.org/pdf/1909.11942.pdf
 * 如果只想加载和转换预训练模型，可以参考[chineseGLUE](https://github.com/lonePatient/chineseGLUE_pytorch)，该版本比较简洁。
 * **pytorch**版本为1.1.0 ，cuda版本为9.0 
 
+**\*\*\*\*\* 2019-11-05：新增google版albert_tiny albert_small \*\*\*\*\***
+
+**转换方式**：
+
+1. 将English目录中下**albert_pytorch/albert_english_pytorch/model/modeling_albert.py** 直接替换掉中文版目录下**albert_pytorch/albert_chinese_pytorch/model/modeling_albert.py**
+
+2. 注释modeling_albert.py中**第50行**，即：
+```python
+    #tf_path = tf_path + "/variables/variables"
+```
+3. 按照原来版本模式就可以直接转换
+
+**测试结果**
+
+| 模型 | 开发集(Dev) | 测试集(Test) | 模型参数|
+| :------- | :---------: | :---------: | :---------: |
+| albert_tiny_google_zh| 84.84 | 85.55 |epoch=4,lr=0.0001,dropout=0.1,seq_len=128,batch=64|
+| albert_small_google_zh | 86.04 | 87.14 |epoch=4,lr=0.0001,dropout=0.1,seq_len=128,batch=64|
+
 ## Pre-LN and Post-LN
 
 * Post-LN: . 在原始的Transformer中，Layer Norm在跟在Residual之后的，我们把这个称为`Post-LN Transformer`
@@ -23,7 +42,6 @@ arxiv: https://arxiv.org/pdf/1909.11942.pdf
 * Pre-LN: 把Layer Norm换个位置，比如放在Residual的过程之中（称为`Pre-LN Transformer`）
 
 <p align="center"><img width="200" src="https://lonepatient-1257945978.cos.ap-chengdu.myqcloud.com/Selection_001.png" /></p>
-
 paper: [On Layer Normalization in the Transformer Architecture](https://openreview.net/forum?id=B1x8anVFPr)
 
 **使用方式**
