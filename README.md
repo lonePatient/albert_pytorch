@@ -30,6 +30,8 @@ arxiv: https://arxiv.org/pdf/1909.11942.pdf
 
 **测试结果**
 
+数据集：lcqmc
+
 | 模型 | 开发集(Dev) | 测试集(Test) | 模型参数|
 | :------- | :---------: | :---------: | :---------: |
 | albert_tiny_google_zh| 84.84 | 85.55 |epoch=4,lr=0.0001,dropout=0.1,seq_len=128,batch=64|
@@ -43,6 +45,7 @@ arxiv: https://arxiv.org/pdf/1909.11942.pdf
 
 <p align="center"><img width="200" src="https://lonepatient-1257945978.cos.ap-chengdu.myqcloud.com/Selection_001.png" /></p>
 paper: [On Layer Normalization in the Transformer Architecture](https://openreview.net/forum?id=B1x8anVFPr)
+
 
 **使用方式**
 
@@ -100,9 +103,10 @@ config = BertConfig.from_pretrained(bert_config_file,share_type=share_type)
 **n-gram**: 原始论文中按照以下分布随机生成n-gram，默认max_n为3
 
    <p align="center"><img width="200" src="https://lonepatient-1257945978.cos.ap-chengdu.myqcloud.com/n-gram.png" /></p>
-１．将文本数据转化为一行一句格式，并且不同document之间使用`\n`分割
+   
+1. 将文本数据转化为一行一句格式，并且不同document之间使用`\n`分割
 
-２. 运行以下命令：
+2. 运行以下命令：
 ```python
 python prepare_lm_data_ngram.py \
     --data_dir=dataset/ \
@@ -113,7 +117,7 @@ python prepare_lm_data_ngram.py \
 ```
 产生n-gram masking数据集，**具体可根据对应数据进行修改代码**
 
-３．运行以下命令：
+3. 运行以下命令：
 ```python
 python run_pretraining.py \
     --data_dir=dataset/ \
@@ -179,7 +183,3 @@ python convert_albert_tf_checkpoint_to_pytorch.py \
 | albert_base(tf) | 86.4 | 86.3 |
 | albert_base(pytorch) | 87.4 | 86.4 |
 | albert_tiny | 85.１ | 85.3 |
-
-
-
-
