@@ -719,8 +719,6 @@ class AlbertForPreTraining(AlbertPreTrainedModel):
         """
         self._tie_or_clone_weights(self.cls.predictions.decoder,
                                        self.bert.embeddings.word_embeddings)
-        self._tie_or_clone_data(self.cls.predictions.project_layer,
-                                    self.bert.embeddings.word_embeddings_2)
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None,
                 masked_lm_labels=None, next_sentence_label=None):
@@ -794,8 +792,6 @@ class AlbertForMaskedLM(AlbertPreTrainedModel):
         """
         self._tie_or_clone_weights(self.cls.predictions.decoder,
                                    self.bert.embeddings.word_embeddings)
-        self._tie_or_clone_data(self.cls.predictions.project_layer,
-                                self.bert.embeddings.word_embeddings_2)
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None,
                 masked_lm_labels=None):
