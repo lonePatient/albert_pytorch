@@ -54,6 +54,9 @@ python convert_albert_tf_checkpoint_to_pytorch.py \
     --bert_config_file=./prev_trained_model/albert_base_v2/config.json \
     --pytorch_dump_path=./prev_trained_model/albert_base_v2/pytorch_model.bin
 ```
+The [General Language Understanding Evaluation (GLUE) benchmark](https://gluebenchmark.com/) is a collection of nine sentence- or sentence-pair language understanding tasks for evaluating and analyzing natural language understanding systems.
+
+Before running anyone of these GLUE tasks you should download the [GLUE data](https://gluebenchmark.com/tasks) by running [this script](https://gist.github.com/W4ngatang/60c2bdb54d156a41194446737ce03e2e) and unpack it to some directory $DATA_DIR.
 
 3．run `sh run_classifier_sst2.sh`to fine tuning albert model
 
