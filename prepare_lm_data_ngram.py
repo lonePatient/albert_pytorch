@@ -171,7 +171,7 @@ def create_masked_lm_predictions(tokens, max_ngram, masked_lm_prob, max_predicti
                 masked_token_labels.append(MaskedLmInstance(index=ind, label=tokens[ind]))
                 tokens[ind] = masked_token
 
-    assert len(masked_token_labels) <= num_to_mask
+    #assert len(masked_token_labels) <= num_to_mask
     masked_token_labels = sorted(masked_token_labels, key=lambda x: x.index)
     mask_indices = [p.index for p in masked_token_labels]
     masked_labels = [p.label for p in masked_token_labels]
