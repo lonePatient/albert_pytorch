@@ -129,8 +129,8 @@ def main():
     parser.add_argument("--do_lower_case", action='store_true',
                         help="Set this flag if you are using an uncased model.")
 
-    parser.add_argument('--num_eval_steps', default=100)
-    parser.add_argument('--num_save_steps', default=200)
+    parser.add_argument('--num_eval_steps', default=1000)
+    parser.add_argument('--num_save_steps', default=2000)
     parser.add_argument("--local_rank", type=int, default=-1,
                         help="local_rank for distributed training on gpus")
     parser.add_argument("--weight_decay", default=0.01, type=float,
@@ -139,7 +139,7 @@ def main():
                         help="Whether not to use CUDA when available")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
                         help="Number of updates steps to accumulate before performing a backward/update pass.")
-    parser.add_argument("--train_batch_size", default=4, type=int,
+    parser.add_argument("--train_batch_size", default=16, type=int,
                         help="Total batch size for training.")
     parser.add_argument('--loss_scale', type=float, default=0,
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
@@ -150,7 +150,7 @@ def main():
     parser.add_argument("--adam_epsilon", default=1e-8, type=float,
                         help="Epsilon for Adam optimizer.")
     parser.add_argument('--max_grad_norm', default=1.0, type=float)
-    parser.add_argument("--learning_rate", default=0.00176, type=float,
+    parser.add_argument("--learning_rate", default=0.000176, type=float,
                         help="The initial learning rate for Adam.")
     parser.add_argument('--seed', type=int, default=42,
                         help="random seed for initialization")
@@ -193,8 +193,7 @@ def main():
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.distributed.init_process_group(backend='nccl')
     logger.info(
-        f"device: {device} , distributed training: {bool(args.local_rank != -1)}, 16-bits training: {args.fp16}, "
-        f"share_type: {args.share_type}")
+        f"device: {device} , distributed training: {bool(args.local_rank != -1)}, 16-bits training: {args.fp16}")
 
     if args.gradient_accumulation_steps < 1:
         raise ValueError(
@@ -211,7 +210,7 @@ def main():
         num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
     args.warmup_steps = int(num_train_optimization_steps * args.warmup_proportion)
 
-    bert_config = AlbertConfig.from_pretrained(args.config_path,share_type=args.share_type)
+    bert_config = AlbertConfig.from_pretrained(args.config_path)
     model = AlbertForPreTraining(config=bert_config)
     if args.model_path:
         model = AlbertForPreTraining.from_pretrained(args.model_path)
@@ -226,6 +225,8 @@ def main():
     optimizer = AdamW(params=optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=num_train_optimization_steps)
     # optimizer = Lamb(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
+    if args.model_path:
+        optimizer.load_state_dict(torch.load(args.model_path + "/optimizer.bin"))
     if args.fp16:
         try:
             from apex import amp
@@ -347,21 +348,10 @@ def main():
                         torch.save(args, str(output_dir / 'training_args.bin'))
                         logger.info("Saving model checkpoint to %s", output_dir)
 
+                        torch.save(optimizer.state_dict(), str(output_dir / "optimizer.bin"))
                         # save config
                         output_config_file = output_dir / CONFIG_NAME
                         with open(str(output_config_file), 'w') as f:
                             f.write(model_to_save.config.to_json_string())
                         # save vocab
                         tokenizer.save_vocabulary(output_dir)
-
-if __name__ == '__main__':
-    main()
-'''
-python run_pretraining.py \
-    --data_dir=dataset/ \
-    --vocab_path=configs/vocab.txt \
-    --data_name=albert \
-    --config_path=configs/albert_config_base.json \
-    --output_dir=outputs/ \
-    --data_name=albert \
-'''
